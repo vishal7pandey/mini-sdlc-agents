@@ -1,0 +1,3 @@
+We need a multi-tenant SaaS todo service that must be completely stateless
+and must maintain a persistent session store for each logged-in user.
+The product owner also insists that we use no database of any kind.

@@ -1,0 +1,280 @@
+# Finalize Requirements Agent — high-level goal
+
+Transform a human **raw requirement text** into a **concise, validated requirements object** that:
+
+* Removes ambiguity where possible (or explicitly calls out what it couldn’t resolve),
+* Detects and flags contradictions,
+* Produces precise, normalized fields downstream tools can depend on (especially design generation).
+
+This single step must be auditable (traceable prompts, model outputs), deterministic where possible (schemas + validators), and safe (no code execution).
+
+---
+
+# Happy-path summary (one-sentence)
+
+Take raw text → apply structured prompt + function-calling JSON output → validate against JSON schema → return `requirements` object or `needs_clarification` with explicit questions.
+
+---
+
+# Inputs & assumptions
+
+**Input**: single string `raw_requirement_text` (UTF-8). Could be short sentence or multi-paragraph spec.
+**Assumptions**:
+
+* Caller is trusted (this design *does not* run arbitrary code from user input).
+* Tokens are sufficient for model to parse the input; long docs will be chunked (see "Large input" section).
+* We will use OpenAI with function-calling to enforce structure; LangChain will wrap calls and LangGraph/DeepAgents will orchestrate the pipeline; LangSmith will record traces and structured outputs.
+
+---
+
+# Output contract (canonical `requirements` object)
+
+Use a strict JSON schema so downstream systems (Design Agent) can rely on typed fields.
+
+### Top-level shape (human-readable description)
+
+* `id` (string): deterministic id (hash of normalized input + timestamp or run id).
+* `title` (string): 3–8 word concise title.
+* `summary` (string): 1–3 sentence summary of scope.
+* `stakeholders` (array[string]): who cares (product, infra, users). If none found, empty array.
+* `assumptions` (array[string]): implicit assumptions the agent inferred.
+* `non_goals` (array[string]): explicitly excluded items.
+* `acceptance_criteria` (array[object]): list of acceptance criteria objects `{id, description, priority, type}`.
+* `functional_requirements` (array[object]): actionable functional reqs `{id, description, rationale, priority}`.
+* `non_functional_requirements` (array[object]): items like performance, security, scalability `{id, description, metric?, target?}`.
+* `dependencies` (array[string]): systems or constraints that must exist (e.g., "OpenID Connect", "Postgres 14").
+* `constraints` (array[string]): regulatory/security/time constraints (e.g., "GDPR", "no external internet access").
+* `clarifications` (array[object]): explicit questions agent wants answered `{id, question, context, severity}`.
+* `contradiction` (object|null): if contradictions found, `{flag:true, issues:[{field,explanation}]}` else `null`.
+* `confidence` (number 0.0–1.0): model’s confidence in output.
+* `meta` (object): `{"prompt_version": "v1", "model": "gpt-4o", "timestamp": ISO8601, "trace_id": "<langsmith-id>"}`
+
+### Example (concise JSON-like example)
+
+```json
+{
+  "id":"req-9f8b2d",
+  "title":"CLI Todo App (in-memory)",
+  "summary":"A simple CLI todo app that supports add, list, delete; in-memory storage only.",
+  "stakeholders":["product","end-user"],
+  "assumptions":["single-user local use","no persistence required"],
+  "non_goals":["networked multi-user access","DB persistence"],
+  "acceptance_criteria":[{"id":"AC-1","description":"Add creates a task visible in list","priority":"high","type":"functional"}],
+  "functional_requirements":[{"id":"FR-1","description":"POST-like add via CLI 'add <text>'","rationale":"user ease","priority":"high"}],
+  "non_functional_requirements":[{"id":"NFR-1","description":"Startup < 500ms on dev laptop","metric":"startup_ms","target":500}],
+  "dependencies":["python>=3.10"],
+  "constraints":["no external network"],
+  "clarifications":[],
+  "contradiction":null,
+  "confidence":0.88,
+  "meta":{"prompt_version":"v1","model":"gpt-4o","timestamp":"2025-11-30T08:00:00Z","trace_id":"ls-abc"}
+}
+```
+
+---
+
+# JSON Schema (contract) — essentials
+
+Provide a single JSON Schema file `src/agents/finalize_requirements/schema.json`. Downstream must validate against it. The schema should declare required fields (`id`, `title`, `summary`, `acceptance_criteria`, `functional_requirements`, `confidence`, `meta`). Use `additionalProperties: false` for strictness.
+
+(Implementation note: for Python use `pydantic` model equivalent derived from the schema. LangChain output parsers can map to pydantic easily.)
+
+---
+
+# How the model is invoked — prompt & function-calling contract
+
+**Use OpenAI function-calling** to force structured output. Provide a function schema that matches the JSON schema above. This avoids brittle free-form parsing.
+
+### Function signature (conceptual, not code)
+
+* `finalize_requirements(raw_text: string) -> requirements_object`
+
+**Prompting guidance (concise)**:
+
+* System message: “You are a Requirements Finalizer for engineering teams. Output must strictly conform to the provided schema. If unsure, ask a clarification.”
+* User message: include `raw_requirement_text` and any `context` (optional fields: existing_systems, user_persona).
+* Instruct model to fill fields directly, to keep descriptions short (< 40 words each), generate deterministic `id` using provided trace id, and to list clarifications (questions) if ambiguity remains.
+
+**Why function-calling**: It ensures the model returns JSON shaped output and enables LangChain/LangGraph to parse and route outputs without fragile string parsing.
+
+---
+
+# Prompt Template (human readable)
+
+Store in `src/agents/finalize_requirements/prompt.txt`:
+
+> System: You are an engineering analyst. Output must strictly follow the provided JSON schema. Keep entries concise. If you detect a contradiction or missing critical info required for design, populate `contradiction` or `clarifications`. Use the `assumptions` field to capture what you inferred.
+> User input: `{{raw_requirement_text}}`
+> Context (optional): `{{context}}`
+> Required: produce JSON only. No extra commentary.
+
+---
+
+# Validation & normalization pipeline (Python + LangChain)
+
+1. **Call** OpenAI via LangChain wrapper with function signature and prompt.
+2. **Validate** response against `schema.json` using `jsonschema` (or Pydantic).
+
+   * If validation passes: mark `confidence` saved.
+   * If validation fails: attempt automated repair with a second model call (short prompt describing the schema violation and asking to return corrected JSON). Limit to 1 automated repair.
+3. **Normalization**:
+
+   * Normalize priority values to enum `["low","medium","high"]`.
+   * Normalize times/metrics into canonical units (e.g., "ms").
+   * Deduplicate lists and trim long text (>200 chars) with summary hints.
+4. **Contradiction detection**:
+
+   * Rule-based checks: logical opposites in same doc (e.g., `stateless` vs `session store`), conflicting constraints vs dependencies.
+   * Semantic checks: Use LLM to re-evaluate pairs of fields flagged by simple heuristics (e.g., if `non_goals` contains "no DB" and `dependencies` lists "Postgres", flag contradiction).
+   * If contradictions found, populate `contradiction` with exact pairs and natural-language explanation.
+5. **Emit** final `requirements` object and persist trace to LangSmith (model output, prompt, schema validate pass/fail, repaired attempts).
+
+---
+
+# Ambiguity resolution strategy (Think)
+
+The agent attempts a **single-shot resolution** before asking for clarification:
+
+1. **Auto-resolve with assumptions**:
+
+   * If ambiguous but resolvable by reasonable default (e.g., no DB mentioned → assume "in-memory"), the agent sets `assumptions` and proceeds.
+   * Each auto-assumption must be recorded in `assumptions` with rationale.
+   * Only apply auto-assumptions when **confidence > 0.6** for that inference.
+
+2. **If ambiguity impacts design** (i.e., missing details required to choose architecture — e.g., "support offline use?" or "expected concurrency?"):
+
+   * Add explicit `clarifications` entries instead of guessing.
+   * Mark `status` as `needs_clarification` (agent returns but indicates it cannot proceed fully).
+
+3. **Prioritization**:
+
+   * The agent should only ask up to **3 clarifying questions** per run to avoid blocking the pipeline. Rank by severity (blocking vs optional) and include severity in `clarifications`.
+
+---
+
+# Contradiction detection (Observe)
+
+Two layers:
+
+1. **Deterministic rules**: simple pattern lists for obvious contradictions:
+
+   * `["stateless","session"]`, `["no-db","requires-persistence"]`, `["single-user","multi-tenant"]`.
+   * If present in different fields, flag contradictions with exact field pointers.
+
+2. **Semantic LLM re-check**:
+
+   * Given suspicious pairs, call model: “Do these two statements conflict? Return yes/no and short reason.” Use this only for flagged items to keep cost down.
+   * If model confirms conflict, mark `contradiction` with recommendations: either choose one (low confidence) or escalate to clarifications.
+
+---
+
+# Traceability & observability (LangSmith + logs)
+
+* Every finalize run must log:
+
+  * Input text (hashed; optionally store raw in secure store).
+  * Prompt version, model name, token usage.
+  * Raw model function response.
+  * Schema validation result and any repairs.
+  * Final `requirements` object and `trace_id`.
+* Use LangSmith to store run traces and LangGraph to show flow graphs. DeepAgents orchestrator should attach the LangSmith trace id to `meta.trace_id`.
+* For auditability, store prompt templates and schema versions in the repo; include `meta.prompt_version` in outputs.
+
+---
+
+# Downstream considerations for Generate Design
+
+Design generation requires:
+
+* **Clear component-level acceptance criteria** (use `acceptance_criteria` field).
+* **Functional requirements with rationale** so design can choose appropriate patterns.
+* **Non-functional metrics** (latency, throughput, availability) as numeric targets, not vague language.
+* **Constraints/dependencies** to avoid designs that require disallowed services.
+
+Therefore: **the Finalize Requirements Agent must canonicalize NFRs into metric-target pairs where possible** (e.g., `"p95_latency_ms": 200`) or mark them as unverifiable/subjective if the input lacks numbers.
+
+---
+
+# Minimal happy-path policy
+
+* If `contradiction` is `null` and `clarifications` is empty, status = `ok` and pipeline proceeds to Generate Design.
+* If `clarifications` non-empty but none are critical, add `assumptions` and proceed but set `status = partially_ok`.
+* If `contradiction.flag = true` OR `clarifications` contains any severity = `blocking` then status = `needs_clarification` and orchestrator pauses or returns to human.
+
+---
+
+# Orchestration hints (LangGraph + DeepAgents)
+
+* Design one LangGraph block `finalize_requirements` that accepts `raw_requirement_text`, calls the LangChain agent (with function-calling), runs local validator (python node), and emits `requirements` or `needs_clarification` event.
+* Use DeepAgents to provide retries/backoff: if JSON validation fails, call repair agent once; on repeated failure send `needs_human_review` event.
+
+---
+
+# LangChain + OpenAI usage pattern
+
+* Wrap OpenAI function-calling into a LangChain LLM wrapper (for easy testing & logging).
+* Use LangChain output parser mapped to Pydantic model that mirrors JSON Schema.
+* Advantages: deterministic parsing, easy unit testing in Python, smoother LangGraph integration.
+
+---
+
+# Security & safety
+
+* **Never execute** any code in `raw_requirement_text`.
+* Sanitize and limit the size of saved raw text (or encrypt at rest).
+* Enforce rate limits & token budgets.
+* If the requirement mentions personally-identifiable info, flag for redaction in `meta`.
+
+---
+
+# Failure modes & mitigation (Breakage designer)
+
+1. **Model returns invalid JSON** → Mitigation: function-calling prevents this; fallback repair attempt; if still invalid, mark `needs_human_review`.
+2. **Model hallucinates dependencies** (e.g., invents a DB) → Mitigation: low-confidence fields get `confidence` < 0.6 and are added to `clarifications`.
+3. **Long requirement exceeds tokens** → Mitigation: chunk & summarize; run preliminary summarizer to extract key bullets before finalization. Provide `summary_fragments` in metadata.
+4. **Too many clarifications** → Limit to 3, rank by blocking severity. Provide human-friendly text for quick resolution.
+5. **Schema drift over time** → Version `prompt_version` and `schema_version` in `meta`.
+
+---
+
+# Minimal test cases (no code) — what to assert
+
+Store as `tests/specs.md`. Examples:
+
+1. **Simple clear requirement** — expect `status=ok`, `contradiction=null`, `acceptance_criteria` non-empty.
+2. **Conflicting requirement** — expect `contradiction.flag=true`, `clarifications` maybe empty, and `status=needs_clarification`.
+3. **Ambiguous non-functional** — expect `clarifications` listing a blocking question (e.g., “Expected concurrency?”).
+4. **Minimal input** (“Make a notes app”) — expect reasonable `assumptions` auto-inferred and `clarifications` limited to 1–2.
+5. **Long spec** ( > model token limit ) — expect pipeline to chunk+summarize and produce consolidated `requirements` with `meta.chunk_count`.
+
+---
+
+# Deliverables (text files you should create now, no code)
+
+Create these text artifacts to lock the contract before you implement:
+
+* `src/agents/finalize_requirements/schema.json` (full JSON Schema)
+* `src/agents/finalize_requirements/prompt.txt` (canonical prompt)
+* `docs/agents.md` entry describing the finalize agent flow (input, output shapes, failure modes)
+* `tests/specs.md` with the 5 minimal cases above
+* `docs/architecture.md` snippet that highlights `finalize_requirements` role & contract
+
+---
+
+# Quick checklist for the implementer (succinct)
+
+* [ ] Implement OpenAI function-calling signature consistent with `schema.json`.
+* [ ] Use LangChain OutputParser → Pydantic model for validation.
+* [ ] Add deterministic id generation and `meta` info with LangSmith trace id.
+* [ ] Implement 1 automated repair attempt for schema failures.
+* [ ] Implement contradiction detection (rules + LLM semantic check).
+* [ ] Emit `status` (`ok` / `partially_ok` / `needs_clarification`) with actionable `clarifications`.
+* [ ] Log everything to LangSmith and keep prompt + schema versioned in repo.
+
+---
+
+# Final note — design philosophy (one paragraph)
+
+Make this agent *opinionated but cautious*: when it can reasonably decide, it should fill in defaults and move the pipeline forward (recording its assumptions). When the ambiguity materially affects design choices, it should stop and ask. Use function-calling + schema validation to force machine-readable outputs so the Design Agent never has to guess how to interpret requirements. Log every decision and make `clarifications` easy for a human to answer quickly — that keeps iteration fast and reduces wasted design cycles.
+
+---

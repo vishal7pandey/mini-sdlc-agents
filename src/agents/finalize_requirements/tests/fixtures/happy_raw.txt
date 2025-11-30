@@ -1,0 +1,3 @@
+Build a simple CLI todo app that lets a single user add, list, and delete
+items from an in-memory list on their local machine. No persistence or
+networking is required.
