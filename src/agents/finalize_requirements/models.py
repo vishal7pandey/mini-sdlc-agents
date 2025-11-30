@@ -160,6 +160,15 @@ class Clarification(BaseModel):
     severity: str  # blocking | important | nice_to_have
 
 
+class AutoAssumption(BaseModel):
+    """Automatically inferred assumption with rationale and confidence."""
+
+    id: str
+    assumption: str
+    rationale: str
+    confidence: float
+
+
 class ContradictionIssue(BaseModel):
     """Single contradiction instance linking a field and explanation."""
 
@@ -221,6 +230,7 @@ class Requirements(BaseModel):
     summary: str
     stakeholders: List[str] = []
     assumptions: List[str] = []
+    auto_assumptions: List[AutoAssumption] = []
     non_goals: List[str] = []
     acceptance_criteria: List[AcceptanceCriteria] = []
     functional_requirements: List[FunctionalRequirement] = []
