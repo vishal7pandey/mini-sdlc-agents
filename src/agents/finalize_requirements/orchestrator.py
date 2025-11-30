@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional, Sequence
 from .client import call_finalize_requirements
 from .contradiction import detect_contradictions
 from .models import FinalizeResult, Meta, Requirements
-from .validator import validate_and_normalize
+from .validator import attempt_repair, validate_and_normalize
 
 
 PROMPT_VERSION = "v1"
@@ -380,6 +380,37 @@ def run_finalize(
 
     requirements, validation_errors = validate_and_normalize(raw_payload)
 
+    # If initial validation fails and we are using an LLM-backed payload, attempt
+    # a single automated repair before giving up.
+    repair_attempted = False
+    repair_meta: Optional[Dict[str, Any]] = None
+
+    if requirements is None and validation_errors and use_llm:
+        try:
+            repaired_requirements, repaired_payload, repair_meta_candidate = attempt_repair(
+                raw_payload,
+                validation_errors,
+                trace_id=trace_id,
+            )
+            repair_attempted = True
+            repair_meta = repair_meta_candidate
+
+            if repaired_requirements is not None:
+                # Treat repaired requirements as the new source of truth.
+                requirements = repaired_requirements
+                # Prefer model/usage from the repair call when present.
+                if isinstance(repair_meta_candidate.get("model"), str):
+                    model_name = repair_meta_candidate["model"]
+                usage_candidate = repair_meta_candidate.get("usage")
+                if isinstance(usage_candidate, dict):
+                    usage = usage_candidate
+                # Validation has effectively succeeded; discard original errors.
+                validation_errors = []
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Automated repair attempt raised exception: %s", exc)
+            repair_attempted = True
+            repair_meta = {"error": str(exc)}
+
     if requirements is not None:
         try:
             if model_name is not None:
@@ -461,6 +492,13 @@ def run_finalize(
         if meta_alert_threshold is not None and meta_alert_threshold > 0.0:
             meta_cost_alert = cost_estimate > meta_alert_threshold
 
+    repair_attempted_flag = repair_attempted
+    if not repair_attempted_flag and requirements is not None:
+        try:
+            repair_attempted_flag = bool(requirements.meta.repair_attempted)
+        except AttributeError:  # pragma: no cover - defensive
+            repair_attempted_flag = False
+
     result = FinalizeResult(
         status=status,
         requirements=requirements,
@@ -475,6 +513,8 @@ def run_finalize(
             "cost_estimate_usd": cost_estimate,
             "usage": usage,
             "cost_alert": meta_cost_alert,
+            "repair_attempted": repair_attempted_flag,
+            "repair_meta": repair_meta,
         },
     )
 
