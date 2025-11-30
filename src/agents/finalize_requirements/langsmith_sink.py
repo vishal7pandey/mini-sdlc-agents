@@ -35,7 +35,9 @@ class LangSmithSink:
     raising.
     """
 
-    def __init__(self, enabled: bool = False, client_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self, enabled: bool = False, client_config: Optional[Dict[str, Any]] = None
+    ) -> None:
         self.enabled = bool(enabled) and _LangSmithClient is not None
         self._client_config = client_config or {}
         self._client: Optional[_LangSmithClient] = None  # type: ignore[assignment]
@@ -44,8 +46,12 @@ class LangSmithSink:
             return
 
         try:
-            api_key = self._client_config.get("api_key") or os.getenv("LANGSMITH_API_KEY")
-            api_url = self._client_config.get("api_url") or os.getenv("LANGSMITH_API_BASE")
+            api_key = self._client_config.get("api_key") or os.getenv(
+                "LANGSMITH_API_KEY"
+            )
+            api_url = self._client_config.get("api_url") or os.getenv(
+                "LANGSMITH_API_BASE"
+            )
 
             kwargs: Dict[str, Any] = {}
             if api_key:

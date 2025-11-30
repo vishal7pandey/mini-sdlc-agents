@@ -5,6 +5,7 @@ Task 1: structure-only stub. Later this will:
 - Use `validator.validate_and_normalize` to enforce the contract.
 - Run contradiction detection and compute a FinalizeResult.
 """
+
 import argparse
 import json
 import logging
@@ -70,9 +71,8 @@ def _estimate_cost_usd(usage: Optional[Dict[str, Any]]) -> Optional[float]:
     if input_price <= 0.0 and output_price <= 0.0:
         return None
 
-    cost = (
-        prompt_tokens * (input_price / 1_000_000.0)
-        + completion_tokens * (output_price / 1_000_000.0)
+    cost = prompt_tokens * (input_price / 1_000_000.0) + completion_tokens * (
+        output_price / 1_000_000.0
     )
     return round(cost, 8)
 
@@ -166,7 +166,9 @@ def _get_daily_totals(state: Dict[str, Any], day: str) -> tuple[int, float]:
     return tokens, cost_usd
 
 
-def _update_usage_counters(usage: Optional[Dict[str, Any]], cost: Optional[float]) -> None:
+def _update_usage_counters(
+    usage: Optional[Dict[str, Any]], cost: Optional[float]
+) -> None:
     """Update the per-day token and cost counters for this call.
 
     This is intentionally simple and file-based for local dev/testing; it is
@@ -262,7 +264,9 @@ def _extract_function_payload(response: Dict[str, Any]) -> Dict[str, Any]:
     message = choices[0].get("message") or {}
     tool_calls = message.get("tool_calls") or []
     if not tool_calls:
-        raise ValueError("Model response contained no tool_calls for finalize_requirements.")
+        raise ValueError(
+            "Model response contained no tool_calls for finalize_requirements."
+        )
 
     for tool_call in tool_calls:
         function = tool_call.get("function") or {}
@@ -276,7 +280,9 @@ def _extract_function_payload(response: Dict[str, Any]) -> Dict[str, Any]:
         except json.JSONDecodeError as exc:  # pragma: no cover - defensive
             raise ValueError(f"Tool call arguments were not valid JSON: {exc}") from exc
 
-    raise ValueError("No finalize_requirements function tool call found in model response.")
+    raise ValueError(
+        "No finalize_requirements function tool call found in model response."
+    )
 
 
 def run_finalize(
@@ -441,10 +447,12 @@ def run_finalize(
 
     if requirements is None and validation_errors and use_llm:
         try:
-            repaired_requirements, repaired_payload, repair_meta_candidate = attempt_repair(
-                raw_payload,
-                validation_errors,
-                trace_id=trace_id,
+            repaired_requirements, repaired_payload, repair_meta_candidate = (
+                attempt_repair(
+                    raw_payload,
+                    validation_errors,
+                    trace_id=trace_id,
+                )
             )
             repair_attempted = True
             repair_meta = repair_meta_candidate
@@ -523,7 +531,9 @@ def run_finalize(
 
             if confirmed_issues:
                 contradiction = Contradiction(flag=True, issues=confirmed_issues)
-                requirements = requirements.model_copy(update={"contradiction": contradiction})
+                requirements = requirements.model_copy(
+                    update={"contradiction": contradiction}
+                )
             else:
                 # If semantic check is disabled or failed, fall back to
                 # deterministic issues; otherwise leave contradiction unset.
@@ -536,7 +546,9 @@ def run_finalize(
                         fallback = True
 
                 if fallback:
-                    requirements = requirements.model_copy(update={"contradiction": contradiction})
+                    requirements = requirements.model_copy(
+                        update={"contradiction": contradiction}
+                    )
 
         # Infer auto-assumptions once we have a validated requirements object.
         if not use_llm:
@@ -567,7 +579,9 @@ def run_finalize(
             if status != "needs_human_review":
                 status = "needs_clarification"
         else:
-            clarifications_list = list(getattr(requirements, "clarifications", []) or [])
+            clarifications_list = list(
+                getattr(requirements, "clarifications", []) or []
+            )
             if clarifications_list:
                 status = "needs_clarification"
             else:
@@ -576,7 +590,10 @@ def run_finalize(
                     confidences = [float(a.confidence) for a in autos]
                     if confidences:
                         avg_conf = sum(confidences) / float(len(confidences))
-                        threshold = _get_env_float("FINALIZE_AUTOASSUME_CONFIDENCE_THRESHOLD") or 0.6
+                        threshold = (
+                            _get_env_float("FINALIZE_AUTOASSUME_CONFIDENCE_THRESHOLD")
+                            or 0.6
+                        )
                         auto_assumptions_summary = {
                             "count": len(autos),
                             "avg_confidence": avg_conf,
@@ -645,12 +662,18 @@ def run_finalize(
     # Threshold for logging warnings.
     log_alert_threshold = _get_env_float("FINALIZE_SINGLE_CALL_COST_ALERT_USD")
     # Threshold for setting a structured cost_alert flag on the result meta.
-    meta_alert_threshold = _get_env_float("FINALIZE_COST_ALERT_USD") or log_alert_threshold
+    meta_alert_threshold = (
+        _get_env_float("FINALIZE_COST_ALERT_USD") or log_alert_threshold
+    )
 
     meta_cost_alert: Optional[bool] = None
 
     if cost_estimate is not None:
-        if log_alert_threshold is not None and log_alert_threshold > 0.0 and cost_estimate > log_alert_threshold:
+        if (
+            log_alert_threshold is not None
+            and log_alert_threshold > 0.0
+            and cost_estimate > log_alert_threshold
+        ):
             logger.warning(
                 "finalize_requirements single-call cost %.8f USD exceeds alert threshold %.8f (model=%s, trace_id=%s)",
                 cost_estimate,
@@ -762,13 +785,19 @@ def run_finalize_local_demo(fixtures_dir: Optional[str] = None) -> None:
     raw requirements text, and prints the structured result.
     """
 
-    base_dir = Path(fixtures_dir) if fixtures_dir else Path(__file__).parent / "tests" / "fixtures"
+    base_dir = (
+        Path(fixtures_dir)
+        if fixtures_dir
+        else Path(__file__).parent / "tests" / "fixtures"
+    )
 
     for path in sorted(base_dir.glob("*.txt")):
         raw_text = path.read_text(encoding="utf-8")
         # Demo stays LLM-free by forcing use_llm=False so it can be run
         # without network access.
-        result = run_finalize(raw_text, context={"fixture_name": path.name}, use_llm=False)
+        result = run_finalize(
+            raw_text, context={"fixture_name": path.name}, use_llm=False
+        )
 
         print("=" * 80)
         print(f"Fixture: {path.name}")

@@ -83,26 +83,21 @@ def _extract_usage_from_ai_message(message: Any) -> Optional[Dict[str, int]]:
 
     try:
         prompt_tokens = int(
-            usage_meta.get("input_tokens")
-            or usage_meta.get("prompt_tokens")
-            or 0
+            usage_meta.get("input_tokens") or usage_meta.get("prompt_tokens") or 0
         )
     except (TypeError, ValueError):  # pragma: no cover - defensive
         prompt_tokens = 0
 
     try:
         completion_tokens = int(
-            usage_meta.get("output_tokens")
-            or usage_meta.get("completion_tokens")
-            or 0
+            usage_meta.get("output_tokens") or usage_meta.get("completion_tokens") or 0
         )
     except (TypeError, ValueError):  # pragma: no cover - defensive
         completion_tokens = 0
 
     try:
         total_tokens = int(
-            usage_meta.get("total_tokens")
-            or (prompt_tokens + completion_tokens)
+            usage_meta.get("total_tokens") or (prompt_tokens + completion_tokens)
         )
     except (TypeError, ValueError):  # pragma: no cover - defensive
         total_tokens = prompt_tokens + completion_tokens
@@ -123,7 +118,9 @@ class LangChainWrapper:
     fall back to the direct OpenAI SDK path.
     """
 
-    def __init__(self, model_name: str, api_base: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(
+        self, model_name: str, api_base: Optional[str] = None, **kwargs: Any
+    ) -> None:
         if _ChatOpenAI is None or HumanMessage is None or SystemMessage is None:
             raise LangChainNotAvailable(
                 "LangChain ChatOpenAI is not available; install langchain and "
@@ -177,6 +174,7 @@ class LangChainWrapper:
         """
 
         if self._retry_decorator is not None:
+
             @self._retry_decorator  # type: ignore[misc]
             def _call() -> Dict[str, Any]:
                 return self._call_function_once(messages, tool_def, timeout_s)
@@ -201,6 +199,7 @@ class LangChainWrapper:
         """
 
         if self._retry_decorator is not None:
+
             @self._retry_decorator  # type: ignore[misc]
             def _call() -> Dict[str, Any]:
                 return self._call_text_once(messages, max_tokens, timeout_s)
@@ -256,7 +255,9 @@ class LangChainWrapper:
             timeout=timeout_s,
         )
 
-        tool_calls = getattr(ai_message, "additional_kwargs", {}).get("tool_calls") or []
+        tool_calls = (
+            getattr(ai_message, "additional_kwargs", {}).get("tool_calls") or []
+        )
         raw_response: Dict[str, Any] = {
             "choices": [
                 {

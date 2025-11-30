@@ -4,6 +4,7 @@ Task 1: stub only. Later this module will:
 - Apply deterministic contradiction rules (e.g., stateless vs session).
 - Optionally call an LLM for semantic re-checks (in a later iteration).
 """
+
 from __future__ import annotations
 
 import json
@@ -82,7 +83,9 @@ def _collect_sources(req: Requirements) -> List[Tuple[str, str, List[str]]]:
     return sources
 
 
-def _fields_with_token(sources: Sequence[Tuple[str, str, List[str]]], token: str) -> List[str]:
+def _fields_with_token(
+    sources: Sequence[Tuple[str, str, List[str]]], token: str
+) -> List[str]:
     fields: List[str] = []
     for field, _norm, tokens in sources:
         if token in tokens:
@@ -239,7 +242,9 @@ def _rule_non_goals_vs_dependencies(req: Requirements) -> List[ContradictionIssu
                     "An item appears both as a non-goal and as a dependency, "
                     "which is contradictory."
                 )
-                issues.append(ContradictionIssue(field=field_ref, explanation=explanation))
+                issues.append(
+                    ContradictionIssue(field=field_ref, explanation=explanation)
+                )
 
     return issues
 
@@ -324,14 +329,15 @@ def _estimate_cost_usd(usage: Optional[Dict[str, Any]]) -> Optional[float]:
     if input_price <= 0.0 and output_price <= 0.0:
         return None
 
-    cost = (
-        prompt_tokens * (input_price / 1_000_000.0)
-        + completion_tokens * (output_price / 1_000_000.0)
+    cost = prompt_tokens * (input_price / 1_000_000.0) + completion_tokens * (
+        output_price / 1_000_000.0
     )
     return round(cost, 8)
 
 
-def _merge_usage(base: Optional[Dict[str, Any]], extra: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _merge_usage(
+    base: Optional[Dict[str, Any]], extra: Optional[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
     if extra is None:
         return base
     if base is None:
@@ -408,11 +414,15 @@ def _extract_semantic_results(raw_response: Any) -> List[Dict[str, Any]]:
                 return [item for item in data if isinstance(item, dict)]
         except json.JSONDecodeError as exc:  # pragma: no cover - defensive
             last_error = exc
-            logger.debug("Failed to parse semantic JSON array from snippet: %s", snippet[:200])
+            logger.debug(
+                "Failed to parse semantic JSON array from snippet: %s", snippet[:200]
+            )
 
     if last_error is not None:
         # Signal malformed JSON to the caller so it can be surfaced in meta.
-        raise ValueError(f"Failed to parse semantic contradiction JSON response: {last_error}") from last_error
+        raise ValueError(
+            f"Failed to parse semantic contradiction JSON response: {last_error}"
+        ) from last_error
 
     return []
 
@@ -507,7 +517,9 @@ def semantic_check(
                 field_a = pair.get("field_a", "A")
                 field_b = pair.get("field_b", "B")
                 field_ref = f"{field_a} & {field_b}".strip()
-                reason = str(item.get("reason") or "Semantic contradiction between A and B.")
+                reason = str(
+                    item.get("reason") or "Semantic contradiction between A and B."
+                )
 
                 confirmed_issues.append(
                     ContradictionIssue(field=field_ref, explanation=reason)

@@ -79,7 +79,9 @@ def canonicalize_metric(metric: str) -> str:
     return text
 
 
-def compute_requirements_id(data: Mapping[str, Any], trace_id: Optional[str] = None) -> str:
+def compute_requirements_id(
+    data: Mapping[str, Any], trace_id: Optional[str] = None
+) -> str:
     """Compute a deterministic requirements ID from normalized data + trace id.
 
     The ``data`` mapping is expected to be close to the final Requirements
@@ -89,9 +91,7 @@ def compute_requirements_id(data: Mapping[str, Any], trace_id: Optional[str] = N
 
     # Shallow copy without self-referential fields.
     trimmed: Dict[str, Any] = {
-        key: value
-        for key, value in data.items()
-        if key not in {"id", "meta"}
+        key: value for key, value in data.items() if key not in {"id", "meta"}
     }
 
     canonical = json.dumps(trimmed, sort_keys=True, separators=(",", ":"))
@@ -307,7 +307,9 @@ class Requirements(BaseModel):
                 )
             else:
                 d = dict(item)
-                metric_value = str(d.get("metric", "")) if d.get("metric") is not None else ""
+                metric_value = (
+                    str(d.get("metric", "")) if d.get("metric") is not None else ""
+                )
                 d["metric"] = canonicalize_metric(metric_value)
                 normalized_nfr.append(d)
         working["non_functional_requirements"] = normalized_nfr
@@ -330,4 +332,3 @@ class FinalizeResult(BaseModel):
     requirements: Optional[Requirements] = None
     errors: List[str] = []
     meta: Dict[str, Any] = {}
-

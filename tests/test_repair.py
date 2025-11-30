@@ -2,7 +2,6 @@
 import json
 from unittest.mock import patch
 
-import pytest
 
 from src.agents.finalize_requirements import orchestrator
 
@@ -103,7 +102,9 @@ def test_repair_accepts_fix():
     # Check repair metadata present either at top-level or nested meta
     meta = result.get("meta", {})
     req_meta = (result.get("requirements") or {}).get("meta", {})
-    assert meta.get("repair_attempted") is True or req_meta.get("repair_attempted") is True
+    assert (
+        meta.get("repair_attempted") is True or req_meta.get("repair_attempted") is True
+    )
 
 
 def test_repair_fails_then_needs_human():
@@ -136,4 +137,7 @@ def test_repair_fails_then_needs_human():
         )
 
     assert result["status"] == "needs_human_review"
-    assert "repair_attempted" in result["meta"] and result["meta"]["repair_attempted"] is True
+    assert (
+        "repair_attempted" in result["meta"]
+        and result["meta"]["repair_attempted"] is True
+    )

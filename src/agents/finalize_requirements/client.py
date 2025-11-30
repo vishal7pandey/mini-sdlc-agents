@@ -73,13 +73,20 @@ def _get_env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _has_openai_api_key() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY"))
+
+
 class OpenAIAdapter:
-    def __init__(self, model: Optional[str] = None, api_base: Optional[str] = None) -> None:
+    def __init__(
+        self, model: Optional[str] = None, api_base: Optional[str] = None
+    ) -> None:
         self.model = model or os.getenv("FINALIZE_MODEL", "gpt-5-nano")
         base = api_base or os.getenv("OPENAI_API_BASE")
 
         self._use_langchain = _get_env_bool("FINALIZE_USES_LANGCHAIN", True)
         self._langchain_wrapper: Optional[LangChainWrapper] = None
+        self._client: Optional[OpenAI]
 
         if self._use_langchain:
             # Allow a distinct model for the LangChain wrapper; fall back to
@@ -92,16 +99,29 @@ class OpenAIAdapter:
                     lc_model,
                 )
             except LangChainNotAvailable as exc:  # pragma: no cover - defensive
-                logger.warning("LangChain not available, falling back to raw OpenAI client: %s", exc)
+                logger.warning(
+                    "LangChain not available, falling back to raw OpenAI client: %s",
+                    exc,
+                )
                 self._use_langchain = False
             except Exception as exc:  # pragma: no cover - defensive
-                logger.warning("Failed to initialize LangChainWrapper; falling back to raw OpenAI client: %s", exc)
+                logger.warning(
+                    "Failed to initialize LangChainWrapper; falling back to raw OpenAI client: %s",
+                    exc,
+                )
                 self._use_langchain = False
 
-        if base:
-            self._client = OpenAI(base_url=base)
+        api_key_present = _has_openai_api_key()
+        if api_key_present:
+            if base:
+                self._client = OpenAI(base_url=base)
+            else:
+                self._client = OpenAI()
         else:
-            self._client = OpenAI()
+            logger.warning(
+                "OPENAI_API_KEY is not set; OpenAIAdapter client will be disabled.",
+            )
+            self._client = None
 
     def call(
         self,
@@ -142,7 +162,10 @@ class OpenAIAdapter:
         tool_def = tools[0]["function"]
 
         if self._use_langchain and self._langchain_wrapper is not None:
-            logger.debug("Calling LangChainWrapper %s with function finalize_requirements", self.model)
+            logger.debug(
+                "Calling LangChainWrapper %s with function finalize_requirements",
+                self.model,
+            )
             lc_result = self._langchain_wrapper.call_function(
                 messages=[system_message, user_message],
                 tool_def=tool_def,
@@ -161,7 +184,14 @@ class OpenAIAdapter:
             "function": {"name": "finalize_requirements"},
         }
 
-        logger.debug("Calling OpenAI %s with function finalize_requirements", self.model)
+        if self._client is None:
+            raise RuntimeError(
+                "OpenAIAdapter cannot be used because OPENAI_API_KEY is not set.",
+            )
+
+        logger.debug(
+            "Calling OpenAI %s with function finalize_requirements", self.model
+        )
 
         completion = self._client.chat.completions.create(
             model=self.model,
@@ -216,8 +246,8 @@ class OpenAIAdapter:
             text_b = pair.get("text_b", "")
 
             lines.append(f"{idx}) pair_id: {pair_id}")
-            lines.append(f"   A ({field_a}): \"{text_a}\"")
-            lines.append(f"   B ({field_b}): \"{text_b}\"")
+            lines.append(f'   A ({field_a}): "{text_a}"')
+            lines.append(f'   B ({field_b}): "{text_b}"')
             lines.append("")
 
         system_message = {
@@ -232,7 +262,9 @@ class OpenAIAdapter:
 
         logger.debug(
             "Calling %s for semantic contradiction check on %d pairs",
-            "LangChainWrapper" if self._use_langchain and self._langchain_wrapper is not None else "OpenAI",
+            "LangChainWrapper"
+            if self._use_langchain and self._langchain_wrapper is not None
+            else "OpenAI",
             len(pairs_payload),
         )
 
@@ -285,7 +317,8 @@ class MockAdapter:
 
         function_args: Dict[str, Any] = {
             "title": (raw_requirement_text or "Draft requirements")[:80],
-            "summary": (raw_requirement_text or "").strip()[:200] or "No requirements text provided.",
+            "summary": (raw_requirement_text or "").strip()[:200]
+            or "No requirements text provided.",
             "stakeholders": context.get("stakeholders", []),
             "assumptions": [],
             "non_goals": [],
@@ -385,8 +418,12 @@ class MockAdapter:
 
 
 class FinalizeClient:
-    def __init__(self, provider: Optional[str] = None, model: Optional[str] = None) -> None:
-        provider_name = provider or os.getenv("FINALIZE_PROVIDER", "openai")
+    def __init__(
+        self, provider: Optional[str] = None, model: Optional[str] = None
+    ) -> None:
+        provider_name = provider or os.getenv("FINALIZE_PROVIDER")
+        if not provider_name:
+            provider_name = "openai" if _has_openai_api_key() else "mock"
         model_name = model or os.getenv("FINALIZE_MODEL", "gpt-5-nano")
 
         self.provider = provider_name
@@ -397,7 +434,9 @@ class FinalizeClient:
         elif provider_name == "mock":
             self._adapter = MockAdapter(model=model_name)
         else:
-            raise ValueError(f"Unsupported finalize_requirements provider: {provider_name}")
+            raise ValueError(
+                f"Unsupported finalize_requirements provider: {provider_name}"
+            )
 
     def call(
         self,
