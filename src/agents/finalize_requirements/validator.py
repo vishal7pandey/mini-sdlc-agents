@@ -100,6 +100,17 @@ def validate_and_normalize(payload: Dict[str, Any]) -> Tuple[Optional[Requiremen
     except Exception as exc:  # pragma: no cover - defensive
         return None, [f"Invalid payload type: {exc}"]
 
+    # Explicitly enforce presence of certain top-level required fields before
+    # we add any defaults via ``Requirements.normalize``. This ensures missing
+    # fields like ``acceptance_criteria`` are surfaced clearly.
+    missing_required: List[str] = []
+    for field in ("summary", "acceptance_criteria"):
+        if field not in prepared:
+            missing_required.append(f"{field}: Field required")
+
+    if missing_required:
+        return None, missing_required
+
     trace_id: Optional[str] = None
     meta = prepared.get("meta")
     if isinstance(meta, Mapping):

@@ -19,4 +19,5 @@ static-checks:
 tests:
   stage: tests
   script:
-    - echo "Run smoke tests for the agent pipeline here"
+    - uv sync
+    - uv run python -m pytest -q
