@@ -73,6 +73,10 @@ def _get_env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _has_openai_api_key() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY"))
+
+
 class OpenAIAdapter:
     def __init__(
         self, model: Optional[str] = None, api_base: Optional[str] = None
@@ -82,6 +86,7 @@ class OpenAIAdapter:
 
         self._use_langchain = _get_env_bool("FINALIZE_USES_LANGCHAIN", True)
         self._langchain_wrapper: Optional[LangChainWrapper] = None
+        self._client: Optional[OpenAI]
 
         if self._use_langchain:
             # Allow a distinct model for the LangChain wrapper; fall back to
@@ -106,10 +111,17 @@ class OpenAIAdapter:
                 )
                 self._use_langchain = False
 
-        if base:
-            self._client = OpenAI(base_url=base)
+        api_key_present = _has_openai_api_key()
+        if api_key_present:
+            if base:
+                self._client = OpenAI(base_url=base)
+            else:
+                self._client = OpenAI()
         else:
-            self._client = OpenAI()
+            logger.warning(
+                "OPENAI_API_KEY is not set; OpenAIAdapter client will be disabled.",
+            )
+            self._client = None
 
     def call(
         self,
@@ -171,6 +183,11 @@ class OpenAIAdapter:
             "type": "function",
             "function": {"name": "finalize_requirements"},
         }
+
+        if self._client is None:
+            raise RuntimeError(
+                "OpenAIAdapter cannot be used because OPENAI_API_KEY is not set.",
+            )
 
         logger.debug(
             "Calling OpenAI %s with function finalize_requirements", self.model
@@ -404,7 +421,9 @@ class FinalizeClient:
     def __init__(
         self, provider: Optional[str] = None, model: Optional[str] = None
     ) -> None:
-        provider_name = provider or os.getenv("FINALIZE_PROVIDER", "openai")
+        provider_name = provider or os.getenv("FINALIZE_PROVIDER")
+        if not provider_name:
+            provider_name = "openai" if _has_openai_api_key() else "mock"
         model_name = model or os.getenv("FINALIZE_MODEL", "gpt-5-nano")
 
         self.provider = provider_name
