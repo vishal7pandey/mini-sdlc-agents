@@ -17,7 +17,7 @@ def _base_payload() -> dict:
         "confidence": 0.9,
         "meta": {
             "prompt_version": "v1",
-            "model": "gpt-4o",
+            "model": "gpt-5-nano",
             "timestamp": "2025-11-30T08:00:00Z",
             "trace_id": "trace-base",
             "schema_version": "v1",

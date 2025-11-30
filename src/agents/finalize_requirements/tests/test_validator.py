@@ -43,7 +43,7 @@ class TestValidator(unittest.TestCase):
             "confidence": 0.9,
             "meta": {
                 "prompt_version": "v1",
-                "model": "gpt-4o",
+                "model": "gpt-5-nano",
                 "timestamp": "2025-11-30T08:00:00Z",
                 "trace_id": "trace-happy",
                 "schema_version": "v1",
@@ -73,7 +73,7 @@ class TestValidator(unittest.TestCase):
             "confidence": 0.5,
             "meta": {
                 "prompt_version": "v1",
-                "model": "gpt-4o",
+                "model": "gpt-5-nano",
                 "timestamp": "2025-11-30T08:00:00Z",
                 "trace_id": "trace-missing",
                 "schema_version": "v1",
@@ -109,7 +109,7 @@ class TestValidator(unittest.TestCase):
             "confidence": 0.8,
             "meta": {
                 "prompt_version": "v1",
-                "model": "gpt-4o",
+                "model": "gpt-5-nano",
                 "timestamp": "2025-11-30T08:00:00Z",
                 "trace_id": "trace-trim",
                 "schema_version": "v1",

@@ -1,0 +1,227 @@
+{
+  "status": "needs_clarification",
+  "requirements": {
+    "id": "REQ-001",
+    "title": "Multi-tenant SaaS Todo Platform with SSO, granular roles, audit logs, cross-project views, and Jira/Slack integrations",
+    "summary": "A multi-tenant SaaS todo platform intended for internal teams, supporting SSO, fine-grained RBAC, detailed audit logs, cross-project views, Jira/Slack integrations, CLI and web UI, CSV/PDF exports, an",
+    "stakeholders": [
+      "Product Management",
+      "Platform Security",
+      "IT Admins",
+      "DevOps",
+      "Engineering (Frontend/Backend)"
+    ],
+    "assumptions": [
+      "Existing Kubernetes cluster with sufficient resources will be provided.",
+      "An identity provider will be configured for SSO (OIDC or SAML).",
+      "Jira and Slack tenants/providers are known and accessible via API credentials.",
+      "Users will access via web UI or CLI; no mobile app in scope."
+    ],
+    "non_goals": [
+      "Public SaaS not in scope; not mobile-only; not on-premises beyond the existing Kubernetes setup."
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "AC-001",
+        "description": "System implements a true multi-tenant architecture with per-tenant data isolation and access controls.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-002",
+        "description": "SSO is supported via standard protocols (OIDC/SAML) and can be configured with at least one identity provider.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-003",
+        "description": "Fine-grained RBAC with per-project roles and permissions is available and enforceable.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-004",
+        "description": "Detailed audit logs capture user actions, access events, and changes to resources with retention and export options.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-005",
+        "description": "Cross-project views allow viewing tasks across projects with filtering and aggregation.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-006",
+        "description": "Jira and Slack integrations are available for issue linking and notifications.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-007",
+        "description": "Web UI and CLI are provided for managing tasks and configurations.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-008",
+        "description": "Reports can be exported to CSV and PDF formats.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-009",
+        "description": "Deployment is supported on the existing Kubernetes cluster using Helm charts and manifests.",
+        "priority": "high",
+        "type": "functional"
+      }
+    ],
+    "functional_requirements": [
+      {
+        "id": "FR-001",
+        "description": "Provide multi-tenant data isolation and tenant-scoped data access.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-002",
+        "description": "Implement SSO integration using OIDC or SAML with support for at least one identity provider.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-003",
+        "description": "Implement fine-grained RBAC with project-scoped roles and permissions.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-004",
+        "description": "Implement comprehensive audit logging for user actions, access events, and changes to resources.",
+        "rationale": "to support security and compliance",
+        "priority": "high"
+      },
+      {
+        "id": "FR-005",
+        "description": "Provide cross-project views for tasks with filtering and aggregation.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-006",
+        "description": "Integrate with Jira for issue linking and Slack for notifications.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-007",
+        "description": "Provide web UI and CLI for task management and configuration.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-008",
+        "description": "Export reports to CSV and PDF formats.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-009",
+        "description": "Deploy on existing Kubernetes cluster with Helm/Kustomize manifests and scalable architecture.",
+        "priority": "high"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "id": "NFR-001",
+        "description": "System availability target of 99.9% uptime.",
+        "metric": "availability",
+        "target": 99.9
+      },
+      {
+        "id": "NFR-002",
+        "description": "API response time under normal load <= 200 ms; 95th percentile <= 500 ms.",
+        "metric": "response_time",
+        "target": "<=200ms/95th<=500ms"
+      },
+      {
+        "id": "NFR-003",
+        "description": "Audit logs retained for 365 days.",
+        "metric": "audit_log_retention_days",
+        "target": 365
+      },
+      {
+        "id": "NFR-004",
+        "description": "Data in transit and at rest must be encrypted; compliance with standard security practices.",
+        "metric": "encryption",
+        "target": "AES-256 / TLS 1.2+"
+      },
+      {
+        "id": "NFR-005",
+        "description": "Jira/Slack integrations secured with OAuth tokens and credential management.",
+        "metric": "security_integ",
+        "target": "high"
+      }
+    ],
+    "dependencies": [
+      "Identity Provider (SSO) configured (OIDC/SAML).",
+      "Jira API access (Cloud/Server) with required scopes.",
+      "Slack API access with required scopes.",
+      "Kubernetes cluster accessible with permissions.",
+      "CI/CD pipeline for deployment.",
+      "Helm/Kustomize tooling."
+    ],
+    "constraints": [
+      "Must run on the existing Kubernetes cluster.",
+      "Must be containerized and deployable via Helm charts.",
+      "Must adhere to internal security and data handling policies."
+    ],
+    "clarifications": [
+      {
+        "id": "CL-001",
+        "question": "Which SSO providers and protocols are required (OIDC, SAML, or both)?",
+        "context": "SSO compatibility",
+        "severity": "blocking"
+      },
+      {
+        "id": "CL-002",
+        "question": "Expected number of tenants/users and projected workload to size the cluster?",
+        "context": "Capacity planning",
+        "severity": "important"
+      },
+      {
+        "id": "CL-003",
+        "question": "Any regulatory/compliance requirements (e.g., GDPR, HIPAA)?",
+        "context": "Compliance",
+        "severity": "nice_to_have"
+      }
+    ],
+    "confidence": 0.6,
+    "meta": {
+      "prompt_version": "1.0",
+      "model": "gpt-4",
+      "timestamp": "2025-11-30T12:00:00Z",
+      "trace_id": "smoke-20251130-135639",
+      "schema_version": "1.0",
+      "repair_attempted": true
+    }
+  },
+  "errors": [],
+  "meta": {
+    "trace_id": "smoke-20251130-135639",
+    "prompt_version": "v1",
+    "schema_version": "v1",
+    "source": "orchestrator-llm",
+    "model": "gpt-5-nano-2025-08-07",
+    "token_usage": 6577,
+    "cost_estimate_usd": null,
+    "usage": {
+      "completion_tokens": 5755,
+      "prompt_tokens": 822,
+      "total_tokens": 6577,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 4544,
+        "rejected_prediction_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      }
+    }
+  }
+}

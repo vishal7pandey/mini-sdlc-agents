@@ -1,0 +1,160 @@
+{
+  "status": "needs_clarification",
+  "requirements": {
+    "id": "REQ-001",
+    "title": "Build a todo CLI",
+    "summary": "Create a command-line interface to manage a to-do list with add/list/complete/delete capabilities and local persistence.",
+    "stakeholders": [
+      "Product",
+      "Engineering",
+      "End Users"
+    ],
+    "assumptions": [
+      "CLI runs on Windows, macOS, and Linux.",
+      "Tasks are stored in a local JSON file by default.",
+      "No network dependency; data stored locally.",
+      "User interacts via arguments and optional interactive prompts."
+    ],
+    "non_goals": [
+      "Not a web app or GUI; not a server or API.",
+      "Not multi-user collaboration or cloud sync by default."
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "description": "The CLI shall allow adding a task with a required title and optional due date, priority, and notes.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-2",
+        "description": "The CLI shall list tasks along with status and allow filtering by status (all/open/completed) and search.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-3",
+        "description": "The CLI shall mark a task as completed when provided with its ID.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-4",
+        "description": "The CLI shall persist tasks to a local storage file and load tasks on startup, creating the storage file if absent.",
+        "priority": "high",
+        "type": "functional"
+      }
+    ],
+    "functional_requirements": [
+      {
+        "id": "FR-1",
+        "description": "Support creating tasks with a title (required); optional due date, priority, and notes.",
+        "rationale": "Essential for core functionality.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-2",
+        "description": "Support listing tasks with their status and provide filters for status and search.",
+        "rationale": "Required for task management and navigation.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-3",
+        "description": "Support completing a task by ID, updating its status to completed.",
+        "rationale": "Core workflow to mark progress.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-4",
+        "description": "Support deleting a task by ID.",
+        "rationale": "Allows cleanup and correction of list.",
+        "priority": "medium"
+      },
+      {
+        "id": "FR-5",
+        "description": "Persist tasks to a local JSON storage file and load on startup.",
+        "rationale": "Ensures data durability across runs.",
+        "priority": "high"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "id": "NFR-1",
+        "description": "Startup/listing operations should respond within a bounded time.",
+        "metric": "response_time",
+        "target": 0.5
+      },
+      {
+        "id": "NFR-2",
+        "description": "Memory usage should remain under a reasonable bound during typical usage.",
+        "metric": "memory_usage_mb",
+        "target": 20
+      },
+      {
+        "id": "NFR-3",
+        "description": "Cross-platform compatibility across Windows, macOS, and Linux.",
+        "metric": "platforms",
+        "target": "Windows 10+/macOS 10.14+/Linux (glibc-based)"
+      }
+    ],
+    "dependencies": [],
+    "constraints": [
+      "No network dependency; all data stored locally unless user opts-in to a cloud sync in future versions."
+    ],
+    "clarifications": [
+      {
+        "id": "CL-1",
+        "question": "What should be the default storage path and file name for the local storage (e.g., ~/.todo.json or ./todo.json)?",
+        "context": "",
+        "severity": "blocking"
+      },
+      {
+        "id": "CL-2",
+        "question": "Should the CLI support multiple profiles or per-user configurations?",
+        "context": "",
+        "severity": "nice_to_have"
+      },
+      {
+        "id": "CL-3",
+        "question": "Is interactive prompting required for input, or should all data be provided via command-line arguments?",
+        "context": "",
+        "severity": "important"
+      }
+    ],
+    "confidence": 0.7,
+    "meta": {
+      "prompt_version": "v1",
+      "model": "gpt-5-nano-2025-08-07",
+      "timestamp": "2025-11-30T14:05:23Z",
+      "trace_id": "smoke-20251130-140523",
+      "schema_version": "1.0",
+      "repair_attempted": true,
+      "token_usage": 5382
+    }
+  },
+  "errors": [],
+  "meta": {
+    "trace_id": "smoke-20251130-140523",
+    "prompt_version": "v1",
+    "schema_version": "v1",
+    "source": "orchestrator-llm",
+    "model": "gpt-5-nano-2025-08-07",
+    "token_usage": 5382,
+    "cost_estimate_usd": null,
+    "usage": {
+      "completion_tokens": 4629,
+      "prompt_tokens": 753,
+      "total_tokens": 5382,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 3840,
+        "rejected_prediction_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      }
+    }
+  }
+}

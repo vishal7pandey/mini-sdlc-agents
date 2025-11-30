@@ -1,0 +1,145 @@
+{
+  "status": "needs_clarification",
+  "requirements": {
+    "id": "REQ-CLI-001",
+    "title": "Build a todo CLI",
+    "summary": "Develop a command-line interface to manage a local to-do list with add, list, complete, and delete operations, persisting data to a local file.",
+    "stakeholders": [
+      "Product",
+      "Engineering",
+      "End Users"
+    ],
+    "assumptions": [
+      "User has a terminal environment.",
+      "Todo data is stored locally in a JSON file.",
+      "The CLI should be cross-platform (Windows, macOS, Linux).",
+      "Data is loaded at startup and saved on each modification."
+    ],
+    "non_goals": [
+      "Remote synchronization of tasks.",
+      "Authentication or user accounts.",
+      "Graphical user interface or web integration."
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "description": "The CLI supports add, list, complete, and delete commands.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-2",
+        "description": "Todo items persist to a local JSON file on disk and survive restarts.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-3",
+        "description": "Errors are handled gracefully with clear, actionable messages.",
+        "priority": "medium",
+        "type": "functional"
+      },
+      {
+        "id": "AC-4",
+        "description": "Command help and usage information are displayed when invoked with no arguments or --help.",
+        "priority": "low",
+        "type": "functional"
+      }
+    ],
+    "functional_requirements": [
+      {
+        "id": "FR-001",
+        "description": "Implement 'add' command to create a new todo with a title and optional due date.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-002",
+        "description": "Implement 'list' command to display all current todos with status and optional filters.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-003",
+        "description": "Implement 'complete' command to mark a todo as done by its ID.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-004",
+        "description": "Implement 'delete' command to remove a todo by its ID.",
+        "priority": "medium"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "id": "NFR-001",
+        "description": "Cross-platform compatibility across Windows, macOS, and Linux.",
+        "metric": "platforms",
+        "target": "Windows, macOS, Linux"
+      },
+      {
+        "id": "NFR-002",
+        "description": "Data persistence should use atomic writes to a local JSON file to prevent corruption.",
+        "metric": "data_integrity",
+        "target": "atomic_writes"
+      },
+      {
+        "id": "NFR-003",
+        "description": "User-facing command responses should complete within 200ms for small task lists.",
+        "metric": "latency",
+        "target": "<=200ms"
+      }
+    ],
+    "dependencies": [],
+    "constraints": [
+      "No external dependencies beyond the standard library.",
+      "Data file stored under user home directory by default (configurable via --config)."
+    ],
+    "clarifications": [
+      {
+        "id": "CL-001",
+        "question": "What should be the default storage path for the todos? Home directory vs current working directory?",
+        "context": "Data persistence location",
+        "severity": "blocking"
+      },
+      {
+        "id": "CL-002",
+        "question": "Should the CLI support filtering by status, priority, or due date in 'list'? Should there be an interactive prompt mode?",
+        "context": "List behavior",
+        "severity": "nice_to_have"
+      }
+    ],
+    "confidence": 0.56,
+    "meta": {
+      "prompt_version": "1.0",
+      "model": "gpt-4",
+      "timestamp": "2025-11-30T12:00:00Z",
+      "trace_id": "smoke-20251130-135322",
+      "schema_version": "1.0",
+      "repair_attempted": false
+    }
+  },
+  "errors": [],
+  "meta": {
+    "trace_id": "smoke-20251130-135322",
+    "prompt_version": "v1",
+    "schema_version": "v1",
+    "source": "orchestrator-llm",
+    "model": "gpt-5-nano-2025-08-07",
+    "token_usage": 5094,
+    "cost_estimate_usd": null,
+    "usage": {
+      "completion_tokens": 4341,
+      "prompt_tokens": 753,
+      "total_tokens": 5094,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 3648,
+        "rejected_prediction_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      }
+    }
+  }
+}

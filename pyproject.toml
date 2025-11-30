@@ -13,6 +13,8 @@ authors = [
 dependencies = [
   "pydantic>=2,<3",
   "pytest>=8,<9",
+  "openai>=1,<2",
+  "python-dotenv>=1.2.1",
 ]
 
 [build-system]
@@ -26,4 +28,4 @@ package = true
 packages = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["src"]
+testpaths = ["src", "tests"]

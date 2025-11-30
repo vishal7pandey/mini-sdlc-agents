@@ -22,6 +22,7 @@ Generation rules:
 - Use the `assumptions` field when you infer reasonable defaults.
 - Use the `clarifications` field (with severity) when missing information would significantly affect design.
 - If you detect conflicting statements, populate the `contradiction` field with `flag=true` and specific issues.
+ - The `meta.model` field MUST be set to exactly the engine name provided as `{model_name}` in the system message.
 
 Output requirements:
 - Produce **only** a valid JSON object shaped according to `schema.json`.

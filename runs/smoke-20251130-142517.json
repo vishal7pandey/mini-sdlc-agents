@@ -1,0 +1,156 @@
+{
+  "status": "needs_clarification",
+  "requirements": {
+    "id": "REQ-001",
+    "title": "Build a todo CLI",
+    "summary": "Develop a command-line interface to manage a to-do list with operations to add, list, complete, and delete tasks, stored locally by default.",
+    "stakeholders": [
+      "Product",
+      "Engineering",
+      "End users"
+    ],
+    "assumptions": [
+      "Tasks are stored locally in a persistent data store (default: JSON file in the user's home directory).",
+      "CLI supports basic colorized output and a help screen.",
+      "Local data can be migrated to a SQLite DB in future revisions if needed."
+    ],
+    "non_goals": [
+      "Web interface",
+      "Networking features (sync, server)",
+      "Mobile app integration"
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "description": "User can add a new task with a title and optional description; the task appears in the list with status 'pending'.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-2",
+        "description": "User can list tasks with optional filters for status (pending/completed) and search by keyword.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-3",
+        "description": "User can mark a task as completed and the status updates accordingly.",
+        "priority": "high",
+        "type": "functional"
+      },
+      {
+        "id": "AC-4",
+        "description": "User can delete a task by ID and it is removed from the list.",
+        "priority": "medium",
+        "type": "functional"
+      },
+      {
+        "id": "AC-5",
+        "description": "CLI responds within 200 ms for standard operations on a small task list.",
+        "priority": "low",
+        "type": "non-functional"
+      },
+      {
+        "id": "AC-6",
+        "description": "CLI runs on Windows, macOS, and Linux with consistent behavior.",
+        "priority": "medium",
+        "type": "non-functional"
+      }
+    ],
+    "functional_requirements": [
+      {
+        "id": "FR-001",
+        "description": "The tool shall support adding a task with a required title and optional description.",
+        "rationale": "Essential for creating to-dos.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-002",
+        "description": "The tool shall list tasks with their ID, title, description (optional), and status.",
+        "rationale": "Allows users to view tasks and plan actions.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-003",
+        "description": "The tool shall allow marking a task as completed by ID.",
+        "rationale": "Tracks task completion.",
+        "priority": "high"
+      },
+      {
+        "id": "FR-004",
+        "description": "The tool shall allow deleting a task by ID.",
+        "rationale": "Manages cleanup of completed or mis-entered tasks.",
+        "priority": "medium"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "id": "NFR-001",
+        "description": "Performance is sufficient for interactive use (response time <= 200 ms for typical list/add/complete/delete on small datasets).",
+        "metric": "response_time_ms",
+        "target": 200
+      },
+      {
+        "id": "NFR-002",
+        "description": "Cross-platform compatibility across Windows, macOS, and Linux.",
+        "metric": "platforms",
+        "target": "Windows, macOS, Linux"
+      }
+    ],
+    "dependencies": [
+      "none (local-only storage)"
+    ],
+    "constraints": [
+      "Local-only storage by default; no network access required."
+    ],
+    "clarifications": [
+      {
+        "id": "CL-001",
+        "question": "What is the preferred implementation language or framework for the CLI (e.g., Rust, Go, Python)?",
+        "context": "It may affect packaging and distribution.",
+        "severity": "blocking"
+      },
+      {
+        "id": "CL-002",
+        "question": "Should there be an option to migrate data to a different store in future versions (e.g., SQLite)?",
+        "context": "Planning for future extensibility.",
+        "severity": "important"
+      }
+    ],
+    "confidence": 0.48,
+    "meta": {
+      "prompt_version": "1",
+      "model": "gpt-5-nano-2025-08-07",
+      "timestamp": "2025-11-30T14:21:00Z",
+      "trace_id": "smoke-20251130-142517",
+      "schema_version": "1.0",
+      "repair_attempted": true,
+      "token_usage": 3002
+    }
+  },
+  "errors": [],
+  "meta": {
+    "trace_id": "smoke-20251130-142517",
+    "prompt_version": "v1",
+    "schema_version": "v1",
+    "source": "orchestrator-llm",
+    "model": "gpt-5-nano-2025-08-07",
+    "token_usage": 3002,
+    "cost_estimate_usd": 0.0005251,
+    "usage": {
+      "completion_tokens": 2249,
+      "prompt_tokens": 753,
+      "total_tokens": 3002,
+      "completion_tokens_details": {
+        "accepted_prediction_tokens": 0,
+        "audio_tokens": 0,
+        "reasoning_tokens": 1472,
+        "rejected_prediction_tokens": 0
+      },
+      "prompt_tokens_details": {
+        "audio_tokens": 0,
+        "cached_tokens": 0
+      }
+    }
+  }
+}

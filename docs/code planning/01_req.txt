@@ -47,7 +47,7 @@ Use a strict JSON schema so downstream systems (Design Agent) can rely on typed 
 * `clarifications` (array[object]): explicit questions agent wants answered `{id, question, context, severity}`.
 * `contradiction` (object|null): if contradictions found, `{flag:true, issues:[{field,explanation}]}` else `null`.
 * `confidence` (number 0.0–1.0): model’s confidence in output.
-* `meta` (object): `{"prompt_version": "v1", "model": "gpt-4o", "timestamp": ISO8601, "trace_id": "<langsmith-id>"}`
+* `meta` (object): `{"prompt_version": "v1", "model": "gpt-5-nano", "timestamp": ISO8601, "trace_id": "<langsmith-id>"}`
 
 ### Example (concise JSON-like example)
 
@@ -67,7 +67,7 @@ Use a strict JSON schema so downstream systems (Design Agent) can rely on typed 
   "clarifications":[],
   "contradiction":null,
   "confidence":0.88,
-  "meta":{"prompt_version":"v1","model":"gpt-4o","timestamp":"2025-11-30T08:00:00Z","trace_id":"ls-abc"}
+  "meta":{"prompt_version":"v1","model":"gpt-5-nano","timestamp":"2025-11-30T08:00:00Z","trace_id":"ls-abc"}
 }
 ```
 
