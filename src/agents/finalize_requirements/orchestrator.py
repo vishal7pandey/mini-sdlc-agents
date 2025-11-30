@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 from .client import call_finalize_requirements
-from .contradiction import detect_contradictions
-from .models import FinalizeResult, Meta, Requirements
+from .contradiction import detect_contradictions, semantic_check
+from .models import Contradiction, FinalizeResult, Meta, Requirements
 from .validator import attempt_repair, validate_and_normalize
 
 
@@ -200,6 +200,40 @@ def _update_usage_counters(usage: Optional[Dict[str, Any]], cost: Optional[float
     _save_usage_state(state)
 
 
+def _lookup_field_text(req: Requirements, field_ref: str) -> str:
+    """Best-effort lookup of human-readable text for a field path.
+
+    Supports simple paths such as ``title``, ``summary``, ``non_goals[0]``,
+    ``dependencies[1]``, and ``functional_requirements[0].description``.
+    """
+
+    import re
+
+    target: Any = req
+    for part in field_ref.split("."):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"(\w+)\[(\d+)\]$", part)
+        if m:
+            attr = m.group(1)
+            idx = int(m.group(2))
+            try:
+                target = getattr(target, attr)[idx]
+            except Exception:  # pragma: no cover - defensive
+                return ""
+        else:
+            try:
+                target = getattr(target, part)
+            except Exception:  # pragma: no cover - defensive
+                return ""
+
+    if isinstance(target, str):
+        return target
+
+    return str(target)
+
+
 def _extract_function_payload(response: Dict[str, Any]) -> Dict[str, Any]:
     """Extract the finalize_requirements function arguments from a tool call.
 
@@ -311,6 +345,8 @@ def run_finalize(
 
     model_name: Optional[str] = None
     usage: Optional[Dict[str, Any]] = None
+    semantic_meta: Optional[Dict[str, Any]] = None
+    semantic_usage: Optional[Dict[str, Any]] = None
 
     # Determine the raw payload to validate: either from the LLM function
     # call, from the caller, or from the local stub.
@@ -431,7 +467,58 @@ def run_finalize(
     if requirements is not None:
         contradiction = detect_contradictions(requirements)
         if contradiction is not None:
-            requirements = requirements.model_copy(update={"contradiction": contradiction})
+            # Build suspicious pairs from deterministic issues so we can ask the
+            # model to confirm or deny them.
+            suspicious_pairs: list[Dict[str, str]] = []
+            for idx, issue in enumerate(contradiction.issues, start=1):
+                field_ref = issue.field
+                fields = [part.strip() for part in field_ref.split("&") if part.strip()]
+                field_a = fields[0] if fields else field_ref
+                field_b = fields[1] if len(fields) > 1 else field_a
+
+                text_a = _lookup_field_text(requirements, field_a)
+                text_b = _lookup_field_text(requirements, field_b)
+
+                suspicious_pairs.append(
+                    {
+                        "pair_id": f"p-{idx}",
+                        "rule_id": "deterministic_rule",
+                        "field_a": field_a,
+                        "text_a": text_a,
+                        "field_b": field_b,
+                        "text_b": text_b,
+                        "context": requirements.summary,
+                    }
+                )
+
+            confirmed_issues = []
+            if suspicious_pairs and use_llm:
+                confirmed_issues, semantic_meta = semantic_check(
+                    requirements,
+                    suspicious_pairs,
+                    trace_id=trace_id,
+                )
+                if semantic_meta is not None:
+                    usage_value = semantic_meta.get("usage")
+                    if isinstance(usage_value, dict):
+                        semantic_usage = usage_value
+
+            if confirmed_issues:
+                contradiction = Contradiction(flag=True, issues=confirmed_issues)
+                requirements = requirements.model_copy(update={"contradiction": contradiction})
+            else:
+                # If semantic check is disabled or failed, fall back to
+                # deterministic issues; otherwise leave contradiction unset.
+                fallback = False
+                if semantic_meta is None:
+                    fallback = True
+                else:
+                    sem_status = semantic_meta.get("status")
+                    if sem_status in {"failed", "disabled"}:
+                        fallback = True
+
+                if fallback:
+                    requirements = requirements.model_copy(update={"contradiction": contradiction})
 
     # Derive top-level model + token usage + cost metadata.
     model_from_requirements: Optional[str] = None
@@ -458,11 +545,23 @@ def run_finalize(
     if meta_token_usage is None:
         meta_token_usage = token_usage_from_requirements
 
-    cost_estimate = _estimate_cost_usd(usage)
+    base_cost = _estimate_cost_usd(usage)
+    cost_estimate = base_cost
+
+    semantic_cost: Optional[float] = None
+    if semantic_usage is not None:
+        semantic_cost = _estimate_cost_usd(semantic_usage)
+        if semantic_cost is not None:
+            if cost_estimate is None:
+                cost_estimate = semantic_cost
+            else:
+                cost_estimate = round((cost_estimate or 0.0) + semantic_cost, 8)
 
     # Update simple local usage counters and log cost alerts.
     if usage is not None:
-        _update_usage_counters(usage, cost_estimate)
+        _update_usage_counters(usage, base_cost)
+    if semantic_usage is not None:
+        _update_usage_counters(semantic_usage, semantic_cost)
 
     # Threshold for logging warnings.
     log_alert_threshold = _get_env_float("FINALIZE_SINGLE_CALL_COST_ALERT_USD")
@@ -515,6 +614,7 @@ def run_finalize(
             "cost_alert": meta_cost_alert,
             "repair_attempted": repair_attempted_flag,
             "repair_meta": repair_meta,
+            "semantic_contradiction": semantic_meta,
         },
     )
 
