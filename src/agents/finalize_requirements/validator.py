@@ -4,6 +4,7 @@ Task 1: stub signatures only. Later tasks will:
 - Validate raw payloads against `schema.json` / models.
 - Normalize priorities, metrics, and other fields.
 """
+
 import json
 import logging
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -11,7 +12,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from pydantic import ValidationError
 
 from . import client
-from .models import AutoAssumption, Meta, Requirements
+from .models import AutoAssumption, Requirements
 
 
 MAX_STRING_LENGTH = 200
@@ -84,7 +85,9 @@ def _prepare_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def validate_and_normalize(payload: Dict[str, Any]) -> Tuple[Optional[Requirements], List[str]]:
+def validate_and_normalize(
+    payload: Dict[str, Any],
+) -> Tuple[Optional[Requirements], List[str]]:
     """Validate and normalize a raw requirements payload.
 
     The function:
@@ -138,7 +141,9 @@ def validate_and_normalize(payload: Dict[str, Any]) -> Tuple[Optional[Requiremen
     return requirements, []
 
 
-def infer_auto_assumptions(raw_text: str, requirements: Requirements) -> List[AutoAssumption]:
+def infer_auto_assumptions(
+    raw_text: str, requirements: Requirements
+) -> List[AutoAssumption]:
     """Infer safe, high-confidence assumptions from text + structured fields.
 
     This helper is deterministic and does not call any LLMs. It is deliberately
@@ -256,7 +261,9 @@ def infer_auto_assumptions(raw_text: str, requirements: Requirements) -> List[Au
     return deduped
 
 
-def _extract_function_args_from_model_response(raw_model_resp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _extract_function_args_from_model_response(
+    raw_model_resp: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
     """Try several common response shapes to extract function-calling arguments.
 
     Returns a dict (parsed JSON) or ``None`` if nothing usable is found.
@@ -335,10 +342,7 @@ def attempt_repair(
             "original_payload_summary": {
                 "top_keys": list(raw_payload.keys())[:10],
                 "short_preview": json.dumps(
-                    {
-                        k: raw_payload.get(k)
-                        for k in list(raw_payload.keys())[:5]
-                    },
+                    {k: raw_payload.get(k) for k in list(raw_payload.keys())[:5]},
                     default=str,
                 )[:1000],
             },

@@ -121,4 +121,3 @@ def test_ok_when_no_clarifications() -> None:
     requirements = result["requirements"]
     assert requirements.get("clarifications") == []
     assert requirements.get("auto_assumptions", []) == []
-

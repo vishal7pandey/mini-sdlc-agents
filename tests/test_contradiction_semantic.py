@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List
 from unittest.mock import patch
 
-import pytest
 
 from src.agents.finalize_requirements import contradiction as contradiction_mod
 from src.agents.finalize_requirements.models import Meta, Requirements

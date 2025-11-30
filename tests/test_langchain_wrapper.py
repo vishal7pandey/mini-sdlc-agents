@@ -19,7 +19,9 @@ def test_langchain_wrapper_retries_on_transient_error(monkeypatch: Any) -> None:
     # Ensure the wrapper can be constructed without real LangChain installed by
     # providing lightweight stand-ins for the required classes.
     class DummyChat:
-        def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - simple stub
+        def __init__(
+            self, *args: Any, **kwargs: Any
+        ) -> None:  # pragma: no cover - simple stub
             pass
 
     monkeypatch.setattr(lw, "_ChatOpenAI", DummyChat)
@@ -30,7 +32,9 @@ def test_langchain_wrapper_retries_on_transient_error(monkeypatch: Any) -> None:
 
     calls = {"count": 0}
 
-    def fake_call_text_once(messages: List[Dict[str, Any]], max_tokens: int, timeout_s: int) -> Dict[str, Any]:
+    def fake_call_text_once(
+        messages: List[Dict[str, Any]], max_tokens: int, timeout_s: int
+    ) -> Dict[str, Any]:
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("transient error")

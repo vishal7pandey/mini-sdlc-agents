@@ -16,8 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -50,7 +49,9 @@ def _load_usage() -> Dict[str, Any]:
     return data
 
 
-def _iter_window(days_data: Dict[str, Any], *, days: int | None) -> Tuple[str, Dict[str, Any]]:
+def _iter_window(
+    days_data: Dict[str, Any], *, days: int | None
+) -> Tuple[str, Dict[str, Any]]:
     """Yield (day_key, info) pairs within the selected window.
 
     If ``days`` is None, all days are yielded.
