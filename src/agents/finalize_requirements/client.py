@@ -11,14 +11,16 @@ All parsing/validation of the returned JSON into domain models is handled by
 
 from __future__ import annotations
 
-import os
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from openai import OpenAI
+
+from .langchain_wrapper import LangChainNotAvailable, LangChainWrapper
 
 
 logger = logging.getLogger(__name__)
@@ -59,10 +61,43 @@ _PROMPT_TEMPLATE: str = _load_prompt_template()
 _PROMPT_SEMANTIC_TEMPLATE: str = _load_semantic_prompt_template()
 
 
+def _get_env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    text = raw.strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 class OpenAIAdapter:
     def __init__(self, model: Optional[str] = None, api_base: Optional[str] = None) -> None:
         self.model = model or os.getenv("FINALIZE_MODEL", "gpt-5-nano")
         base = api_base or os.getenv("OPENAI_API_BASE")
+
+        self._use_langchain = _get_env_bool("FINALIZE_USES_LANGCHAIN", True)
+        self._langchain_wrapper: Optional[LangChainWrapper] = None
+
+        if self._use_langchain:
+            # Allow a distinct model for the LangChain wrapper; fall back to
+            # the primary FINALIZE_MODEL when unset.
+            lc_model = os.getenv("FINALIZE_LANGCHAIN_MODEL") or self.model
+            try:
+                self._langchain_wrapper = LangChainWrapper(lc_model, api_base=base)
+                logger.info(
+                    "Using LangChainWrapper for finalize_requirements (model=%s)",
+                    lc_model,
+                )
+            except LangChainNotAvailable as exc:  # pragma: no cover - defensive
+                logger.warning("LangChain not available, falling back to raw OpenAI client: %s", exc)
+                self._use_langchain = False
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Failed to initialize LangChainWrapper; falling back to raw OpenAI client: %s", exc)
+                self._use_langchain = False
+
         if base:
             self._client = OpenAI(base_url=base)
         else:
@@ -103,6 +138,23 @@ class OpenAIAdapter:
                 },
             }
         ]
+
+        tool_def = tools[0]["function"]
+
+        if self._use_langchain and self._langchain_wrapper is not None:
+            logger.debug("Calling LangChainWrapper %s with function finalize_requirements", self.model)
+            lc_result = self._langchain_wrapper.call_function(
+                messages=[system_message, user_message],
+                tool_def=tool_def,
+            )
+            response_dict = lc_result.get("raw") or {}
+            usage = lc_result.get("usage")
+            model_name = lc_result.get("model") or self.model
+            return {
+                "response": response_dict,
+                "model": model_name,
+                "usage": usage,
+            }
 
         tool_choice = {
             "type": "function",
@@ -179,10 +231,24 @@ class OpenAIAdapter:
         }
 
         logger.debug(
-            "Calling OpenAI %s for semantic contradiction check on %d pairs",
-            self.model,
+            "Calling %s for semantic contradiction check on %d pairs",
+            "LangChainWrapper" if self._use_langchain and self._langchain_wrapper is not None else "OpenAI",
             len(pairs_payload),
         )
+
+        if self._use_langchain and self._langchain_wrapper is not None:
+            lc_result = self._langchain_wrapper.call_text(
+                messages=[system_message, user_message],
+                max_tokens=max_tokens,
+            )
+            response_dict = lc_result.get("raw") or {}
+            usage = lc_result.get("usage")
+            model_name = lc_result.get("model") or self.model
+            return {
+                "response": response_dict,
+                "model": model_name,
+                "usage": usage,
+            }
 
         completion = self._client.chat.completions.create(
             model=self.model,

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-from .client import call_finalize_requirements
+from .client import _FUNCTION_SCHEMA, call_finalize_requirements
 from .contradiction import detect_contradictions, semantic_check
 from .models import AutoAssumption, Contradiction, FinalizeResult, Meta, Requirements
 from .validator import attempt_repair, infer_auto_assumptions, validate_and_normalize
@@ -363,6 +363,7 @@ def run_finalize(
     semantic_usage: Optional[Dict[str, Any]] = None
     auto_assumptions: Optional[Sequence[AutoAssumption]] = None
     auto_assumptions_summary: Optional[Dict[str, Any]] = None
+    raw_model_response: Optional[Dict[str, Any]] = None
 
     # Determine the raw payload to validate: either from the LLM function
     # call, from the caller, or from the local stub.
@@ -374,6 +375,7 @@ def run_finalize(
                 trace_id=trace_id,
             )
             completion_payload = client_result.get("response") or {}
+            raw_model_response = completion_payload
             model_name = client_result.get("model")
             usage_value = client_result.get("usage")
             if isinstance(usage_value, dict):
@@ -699,8 +701,57 @@ def run_finalize(
         meta=meta_payload,
     )
 
-    # Return a JSON-safe dict (datetimes, etc. converted to strings).
-    return json.loads(result.model_dump_json(exclude_none=True))
+    # Prepare a JSON-safe dict (datetimes, etc. converted to strings).
+    result_dict = json.loads(result.model_dump_json(exclude_none=True))
+
+    # Optional: emit a LangSmith trace for this run. Failures here must never
+    # affect the main control flow.
+    try:  # pragma: no cover - telemetry is best-effort
+        from .langsmith_sink import get_langsmith_sink
+        from .telemetry import build_finalize_trace_payload
+
+        sink = get_langsmith_sink()
+        if sink is not None:
+            include_raw = _get_env_bool("LANGSMITH_INCLUDE_RAW", False)
+            validation_status = "passed" if not errors else "failed"
+
+            raw_excerpt_str: Optional[str] = None
+            if raw_model_response is not None:
+                try:
+                    raw_excerpt_str = json.dumps(raw_model_response, default=str)
+                except Exception:  # pragma: no cover - defensive
+                    raw_excerpt_str = str(raw_model_response)
+
+            trace_payload = build_finalize_trace_payload(
+                trace_id=trace_id,
+                step="finalize_requirements",
+                raw_text=raw_text,
+                context=context,
+                model=meta_model,
+                usage=usage,
+                raw_model_response_excerpt=raw_excerpt_str,
+                function_arguments=raw_payload,
+                validation_status=validation_status,
+                validation_errors=errors,
+                repair={
+                    "attempted": repair_attempted_flag,
+                    "meta": repair_meta,
+                },
+                semantic_contradiction=semantic_meta,
+                final_result=result_dict,
+                include_raw=include_raw,
+                function_schema=_FUNCTION_SCHEMA,
+            )
+
+            sink.push_trace(trace_id or "unknown", trace_payload)
+            # Surface the trace identifier in meta for easier correlation.
+            meta_payload["langsmith_trace_id"] = trace_id
+            result_dict["meta"] = meta_payload
+    except Exception:
+        # Telemetry must never cause the agent to fail.
+        pass
+
+    return result_dict
 
 
 def run_finalize_local_demo(fixtures_dir: Optional[str] = None) -> None:
