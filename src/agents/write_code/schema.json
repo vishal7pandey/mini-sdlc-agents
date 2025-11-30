@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WriteCodeOutput",
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "description": {"type": "string"},
+          "language": {"type": "string"},
+          "contents": {"type": "string"}
+        },
+        "required": ["path", "contents"],
+        "additionalProperties": false
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": [
+    "files",
+    "notes"
+  ],
+  "additionalProperties": false
+}

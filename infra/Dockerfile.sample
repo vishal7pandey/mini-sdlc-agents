@@ -1,0 +1,13 @@
+# Sample development Dockerfile for mini-sdlc-agents
+# This is intentionally minimal and may be adjusted as the project evolves.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt || true  # no deps yet
+
+COPY . .
+
+CMD ["bash"]

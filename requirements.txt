@@ -1,0 +1,2 @@
+# Runtime dependencies for mini-sdlc-agents
+# Intentionally minimal at this stage; add libraries (e.g., pydantic, httpx, openai) as implementation is added.

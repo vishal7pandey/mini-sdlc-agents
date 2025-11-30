@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FinalizeRequirementsOutput",
+  "type": "object",
+  "properties": {
+    "summary": {"type": "string"},
+    "clarified_requirements": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": [
+    "summary",
+    "clarified_requirements",
+    "assumptions",
+    "open_questions"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WriteTestsOutput",
+  "type": "object",
+  "properties": {
+    "test_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string"},
+          "description": {"type": "string"},
+          "language": {"type": "string"},
+          "contents": {"type": "string"}
+        },
+        "required": ["path", "contents"],
+        "additionalProperties": false
+      }
+    },
+    "coverage_goals": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "gaps": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": [
+    "test_files",
+    "coverage_goals",
+    "gaps"
+  ],
+  "additionalProperties": false
+}

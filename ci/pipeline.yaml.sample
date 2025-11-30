@@ -1,0 +1,22 @@
+# CI pipeline skeleton for mini-sdlc-agents
+# Adjust syntax to match your CI provider (GitHub Actions, GitLab CI, etc.).
+
+stages:
+  - lint
+  - static-checks
+  - tests
+
+lint:
+  stage: lint
+  script:
+    - echo "Run linters here (ruff/flake8/black, etc.)"
+
+static-checks:
+  stage: static-checks
+  script:
+    - echo "Run static analysis or type checks here (mypy/pyright, etc.)"
+
+tests:
+  stage: tests
+  script:
+    - echo "Run smoke tests for the agent pipeline here"

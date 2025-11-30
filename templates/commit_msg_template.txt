@@ -1,0 +1,10 @@
+<type>: <short summary>
+
+[optional body]
+- What changed?
+- Why?
+- Any risks or follow-ups?
+
+[optional footer]
+- Issue: #<id>
+- Breaking change: <yes/no>

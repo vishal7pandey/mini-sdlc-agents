@@ -1,0 +1,17 @@
+[project]
+name = "mini-sdlc-agents"
+version = "0.1.0"
+description = "Minimal SDLC agent pipeline scaffold managed by uv."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "UNLICENSED" }
+authors = [
+  { name = "Your Name", email = "you@example.com" }
+]
+
+# No runtime deps yet; add as the project grows.
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

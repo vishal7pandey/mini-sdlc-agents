@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  mini-sdlc-agents-dev:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.sample
+    env_file:
+      - ../.env
+    volumes:
+      - ..:/app
+    working_dir: /app
+    command: bash
