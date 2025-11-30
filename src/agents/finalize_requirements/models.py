@@ -307,6 +307,11 @@ class Requirements(BaseModel):
 
         return cls(**working)
 
+    def to_json(self) -> str:
+        """Return a canonical JSON representation suitable for on-the-wire use."""
+
+        return self.model_dump_json(exclude_none=True)
+
 
 class FinalizeResult(BaseModel):
     """Wrapper for the public result of ``run_finalize``."""
