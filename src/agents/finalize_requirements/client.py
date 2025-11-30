@@ -15,7 +15,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -28,6 +28,7 @@ load_dotenv()
 _BASE_DIR = Path(__file__).parent
 _SCHEMA_PATH = _BASE_DIR / "schema.json"
 _PROMPT_PATH = _BASE_DIR / "prompt.txt"
+_PROMPT_SEMANTIC_PATH = _BASE_DIR / "prompt_semantic.txt"
 
 
 def _load_function_schema() -> Dict[str, Any]:
@@ -47,8 +48,15 @@ def _load_prompt_template() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
 
 
+def _load_semantic_prompt_template() -> str:
+    """Load the semantic contradiction prompt template from ``prompt_semantic.txt``."""
+
+    return _PROMPT_SEMANTIC_PATH.read_text(encoding="utf-8")
+
+
 _FUNCTION_SCHEMA: Dict[str, Any] = _load_function_schema()
 _PROMPT_TEMPLATE: str = _load_prompt_template()
+_PROMPT_SEMANTIC_TEMPLATE: str = _load_semantic_prompt_template()
 
 
 class OpenAIAdapter:
@@ -108,6 +116,79 @@ class OpenAIAdapter:
             messages=[system_message, user_message],
             tools=tools,
             tool_choice=tool_choice,
+        )
+
+        response_dict = completion.model_dump()
+
+        usage = None
+        if getattr(completion, "usage", None) is not None:
+            usage = completion.usage.model_dump()
+
+        return {
+            "response": response_dict,
+            "model": completion.model,
+            "usage": usage,
+        }
+
+    def call_semantic_check(
+        self,
+        pairs_payload: List[Dict[str, Any]],
+        *,
+        trace_id: Optional[str] = None,
+        max_tokens: int = 256,
+    ) -> Dict[str, Any]:
+        """Run a small semantic contradiction check over suspicious pairs.
+
+        This uses a lightweight prompt that asks the model for a JSON array of
+        {pair_id, conflict, reason, confidence} objects.
+        """
+
+        if not pairs_payload:
+            return {"response": [], "model": self.model, "usage": None}
+
+        context_text = pairs_payload[0].get("context") or ""
+
+        lines: List[str] = []
+        if context_text:
+            lines.append(f"Context: {context_text}")
+        else:
+            lines.append("Context: (not provided)")
+        lines.append("")
+        lines.append("Pairs:")
+
+        for idx, pair in enumerate(pairs_payload, start=1):
+            pair_id = pair.get("pair_id", f"p-{idx}")
+            field_a = pair.get("field_a", "A")
+            text_a = pair.get("text_a", "")
+            field_b = pair.get("field_b", "B")
+            text_b = pair.get("text_b", "")
+
+            lines.append(f"{idx}) pair_id: {pair_id}")
+            lines.append(f"   A ({field_a}): \"{text_a}\"")
+            lines.append(f"   B ({field_b}): \"{text_b}\"")
+            lines.append("")
+
+        system_message = {
+            "role": "system",
+            "content": _PROMPT_SEMANTIC_TEMPLATE.format(model_name=self.model),
+        }
+
+        user_message = {
+            "role": "user",
+            "content": "\n".join(lines),
+        }
+
+        logger.debug(
+            "Calling OpenAI %s for semantic contradiction check on %d pairs",
+            self.model,
+            len(pairs_payload),
+        )
+
+        completion = self._client.chat.completions.create(
+            model=self.model,
+            messages=[system_message, user_message],
+            max_tokens=max_tokens,
+            temperature=0,
         )
 
         response_dict = completion.model_dump()
@@ -189,6 +270,53 @@ class MockAdapter:
             "usage": usage,
         }
 
+    def call_semantic_check(
+        self,
+        pairs_payload: List[Dict[str, Any]],
+        *,
+        trace_id: Optional[str] = None,
+        max_tokens: int = 256,
+    ) -> Dict[str, Any]:
+        """Mock semantic contradiction check returning no conflicts.
+
+        Tests that care about the exact semantic behavior should patch
+        ``client.call_semantic_check`` directly.
+        """
+
+        results: List[Dict[str, Any]] = []
+        for idx, pair in enumerate(pairs_payload, start=1):
+            pair_id = pair.get("pair_id", f"p-{idx}")
+            results.append(
+                {
+                    "pair_id": pair_id,
+                    "conflict": False,
+                    "reason": "mock: no conflict",
+                    "confidence": 0.0,
+                }
+            )
+
+        completion_payload: Dict[str, Any] = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(results),
+                    }
+                }
+            ]
+        }
+
+        usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+
+        return {
+            "response": completion_payload,
+            "model": self.model,
+            "usage": usage,
+        }
+
 
 class FinalizeClient:
     def __init__(self, provider: Optional[str] = None, model: Optional[str] = None) -> None:
@@ -218,6 +346,19 @@ class FinalizeClient:
             trace_id=trace_id,
         )
 
+    def call_semantic_check(
+        self,
+        pairs_payload: List[Dict[str, Any]],
+        *,
+        trace_id: Optional[str] = None,
+        max_tokens: int = 256,
+    ) -> Dict[str, Any]:
+        return self._adapter.call_semantic_check(
+            pairs_payload,
+            trace_id=trace_id,
+            max_tokens=max_tokens,
+        )
+
 
 _DEFAULT_CLIENT = FinalizeClient()
 
@@ -233,4 +374,28 @@ def call_finalize_requirements(
         raw_requirement_text,
         context=context,
         trace_id=trace_id,
+    )
+
+
+def call_semantic_check(
+    pairs_payload: List[Dict[str, Any]],
+    trace_id: Optional[str] = None,
+    *,
+    model: Optional[str] = None,
+    max_tokens: int = 256,
+) -> Dict[str, Any]:
+    """Public API for semantic contradiction checks.
+
+    The ``model`` argument is currently ignored; the configured
+    ``FINALIZE_MODEL`` is used instead, keeping behavior consistent with the
+    main finalize_requirements call. Tests may patch this function directly.
+    """
+
+    # For now, reuse the default client; if different models are needed for
+    # semantic checks, this function can be extended to construct a dedicated
+    # client instance.
+    return _DEFAULT_CLIENT.call_semantic_check(
+        pairs_payload,
+        trace_id=trace_id,
+        max_tokens=max_tokens,
     )
