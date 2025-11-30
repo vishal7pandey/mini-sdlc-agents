@@ -15,8 +15,8 @@ from typing import Any, Dict, Optional, Sequence
 
 from .client import call_finalize_requirements
 from .contradiction import detect_contradictions, semantic_check
-from .models import Contradiction, FinalizeResult, Meta, Requirements
-from .validator import attempt_repair, validate_and_normalize
+from .models import AutoAssumption, Contradiction, FinalizeResult, Meta, Requirements
+from .validator import attempt_repair, infer_auto_assumptions, validate_and_normalize
 
 
 PROMPT_VERSION = "v1"
@@ -99,6 +99,20 @@ def _get_env_float(name: str) -> Optional[float]:
         return float(raw)
     except ValueError:  # pragma: no cover - defensive
         return None
+
+
+def _get_env_bool(name: str, default: bool) -> bool:
+    """Return a boolean from an env var, or ``default`` if unset/invalid."""
+
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    text = raw.strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _today_str() -> str:
@@ -347,6 +361,8 @@ def run_finalize(
     usage: Optional[Dict[str, Any]] = None
     semantic_meta: Optional[Dict[str, Any]] = None
     semantic_usage: Optional[Dict[str, Any]] = None
+    auto_assumptions: Optional[Sequence[AutoAssumption]] = None
+    auto_assumptions_summary: Optional[Dict[str, Any]] = None
 
     # Determine the raw payload to validate: either from the LLM function
     # call, from the caller, or from the local stub.
@@ -520,6 +536,67 @@ def run_finalize(
                 if fallback:
                     requirements = requirements.model_copy(update={"contradiction": contradiction})
 
+        # Infer auto-assumptions once we have a validated requirements object.
+        if not use_llm:
+            auto_enabled = _get_env_bool("FINALIZE_AUTOASSUME_ENABLED", True)
+            if auto_enabled:
+                try:
+                    auto_assumptions = infer_auto_assumptions(raw_text, requirements)
+                except Exception:  # pragma: no cover - defensive
+                    auto_assumptions = None
+
+                if auto_assumptions:
+                    requirements = requirements.model_copy(
+                        update={"auto_assumptions": list(auto_assumptions)}
+                    )
+
+    # Derive final status based on contradictions, clarifications, and auto assumptions.
+    if not use_llm and requirements is not None and not errors:
+        has_contradiction = False
+        try:
+            contr_obj = requirements.contradiction
+            if contr_obj is not None and bool(contr_obj.flag):
+                has_contradiction = True
+        except AttributeError:  # pragma: no cover - defensive
+            has_contradiction = False
+
+        if has_contradiction:
+            # Contradictions require clarification unless already escalated.
+            if status != "needs_human_review":
+                status = "needs_clarification"
+        else:
+            clarifications_list = list(getattr(requirements, "clarifications", []) or [])
+            if clarifications_list:
+                status = "needs_clarification"
+            else:
+                autos: Sequence[AutoAssumption] = list(auto_assumptions or [])
+                if autos:
+                    confidences = [float(a.confidence) for a in autos]
+                    if confidences:
+                        avg_conf = sum(confidences) / float(len(confidences))
+                        threshold = _get_env_float("FINALIZE_AUTOASSUME_CONFIDENCE_THRESHOLD") or 0.6
+                        auto_assumptions_summary = {
+                            "count": len(autos),
+                            "avg_confidence": avg_conf,
+                            "ids": [a.id for a in autos],
+                            "enabled": True,
+                        }
+                        if avg_conf > threshold:
+                            merged_assumptions = list(requirements.assumptions or [])
+                            for a in autos:
+                                merged_assumptions.append(
+                                    f"auto: {a.assumption} — {a.rationale}"
+                                )
+                            requirements = requirements.model_copy(
+                                update={"assumptions": merged_assumptions}
+                            )
+                            status = "partially_ok"
+                        else:
+                            status = "needs_clarification"
+                else:
+                    # No clarifications and no auto assumptions -> fully explicit.
+                    status = "ok"
+
     # Derive top-level model + token usage + cost metadata.
     model_from_requirements: Optional[str] = None
     token_usage_from_requirements: Optional[int] = None
@@ -598,24 +675,28 @@ def run_finalize(
         except AttributeError:  # pragma: no cover - defensive
             repair_attempted_flag = False
 
+    meta_payload: Dict[str, Any] = {
+        "trace_id": trace_id,
+        "prompt_version": PROMPT_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        "source": "orchestrator-llm" if use_llm else "orchestrator-local-stub",
+        "model": meta_model,
+        "token_usage": meta_token_usage,
+        "cost_estimate_usd": cost_estimate,
+        "usage": usage,
+        "cost_alert": meta_cost_alert,
+        "repair_attempted": repair_attempted_flag,
+        "repair_meta": repair_meta,
+        "semantic_contradiction": semantic_meta,
+    }
+    if auto_assumptions_summary is not None:
+        meta_payload["auto_assumptions_summary"] = auto_assumptions_summary
+
     result = FinalizeResult(
         status=status,
         requirements=requirements,
         errors=errors,
-        meta={
-            "trace_id": trace_id,
-            "prompt_version": PROMPT_VERSION,
-            "schema_version": SCHEMA_VERSION,
-            "source": "orchestrator-llm" if use_llm else "orchestrator-local-stub",
-            "model": meta_model,
-            "token_usage": meta_token_usage,
-            "cost_estimate_usd": cost_estimate,
-            "usage": usage,
-            "cost_alert": meta_cost_alert,
-            "repair_attempted": repair_attempted_flag,
-            "repair_meta": repair_meta,
-            "semantic_contradiction": semantic_meta,
-        },
+        meta=meta_payload,
     )
 
     # Return a JSON-safe dict (datetimes, etc. converted to strings).

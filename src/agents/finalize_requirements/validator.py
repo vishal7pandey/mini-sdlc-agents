@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from pydantic import ValidationError
 
 from . import client
-from .models import Meta, Requirements
+from .models import AutoAssumption, Meta, Requirements
 
 
 MAX_STRING_LENGTH = 200
@@ -136,6 +136,124 @@ def validate_and_normalize(payload: Dict[str, Any]) -> Tuple[Optional[Requiremen
         return None, [f"Unexpected validation error: {exc}"]
 
     return requirements, []
+
+
+def infer_auto_assumptions(raw_text: str, requirements: Requirements) -> List[AutoAssumption]:
+    """Infer safe, high-confidence assumptions from text + structured fields.
+
+    This helper is deterministic and does not call any LLMs. It is deliberately
+    conservative and only encodes a few explainable rules.
+    """
+
+    results: List[AutoAssumption] = []
+
+    text = (raw_text or "").lower()
+
+    parts: List[str] = [text]
+    parts.append((requirements.title or "").lower())
+    parts.append((requirements.summary or "").lower())
+    parts.extend((s or "").lower() for s in (requirements.assumptions or []))
+    parts.extend((s or "").lower() for s in (requirements.non_goals or []))
+    for fr in requirements.functional_requirements or []:
+        parts.append((fr.description or "").lower())
+        if getattr(fr, "rationale", None):
+            parts.append((fr.rationale or "").lower())
+    for nfr in requirements.non_functional_requirements or []:
+        parts.append((nfr.description or "").lower())
+
+    combined = " ".join(parts)
+    deps = [d.lower() for d in (requirements.dependencies or [])]
+
+    db_tokens = [
+        "db",
+        "database",
+        "postgres",
+        "postgresql",
+        "mysql",
+        "sqlite",
+        "mongodb",
+        "persist",
+        "persistence",
+        "store",
+        "storage",
+    ]
+
+    def _has_db_in_deps() -> bool:
+        for dep in deps:
+            for tok in db_tokens:
+                if tok in dep:
+                    return True
+        return False
+
+    has_db_tokens = any(tok in combined for tok in db_tokens)
+    has_db_deps = _has_db_in_deps()
+
+    # Rule 1: no DB mention anywhere -> assume in-memory storage.
+    if not has_db_tokens and not has_db_deps:
+        results.append(
+            AutoAssumption(
+                id="AA-1",
+                assumption="in-memory storage (no DB persistence)",
+                rationale="No persistence or DB dependency mentioned; assume in-memory for prototyping.",
+                confidence=0.85,
+            )
+        )
+
+    # Rule 2: persistence requested but no DB specified -> SQLite fallback.
+    persistence_tokens = [
+        "persist",
+        "durable",
+        "durability",
+        "save to disk",
+        "persistent",
+    ]
+    has_persistence = any(tok in combined for tok in persistence_tokens)
+    if has_persistence and not has_db_deps:
+        results.append(
+            AutoAssumption(
+                id="AA-2",
+                assumption="local sqlite storage",
+                rationale=(
+                    "Persistence mentioned but no DB specified; default to SQLite for simple durability."
+                ),
+                confidence=0.62,
+            )
+        )
+
+    # Rule 3: no auth/user mention -> assume single-user/local usage.
+    auth_tokens = [
+        "login",
+        "signup",
+        "sign-up",
+        "auth",
+        "authentication",
+        "single sign-on",
+        "sso",
+        "user ",
+        " users",
+        "rbac",
+    ]
+    has_auth = any(tok in combined for tok in auth_tokens)
+    if not has_auth:
+        results.append(
+            AutoAssumption(
+                id="AA-3",
+                assumption="single-user/local usage",
+                rationale="No user or authentication requirements found; assume single-user usage.",
+                confidence=0.75,
+            )
+        )
+
+    # Deduplicate by assumption text.
+    seen: set[str] = set()
+    deduped: List[AutoAssumption] = []
+    for a in results:
+        if a.assumption in seen:
+            continue
+        seen.add(a.assumption)
+        deduped.append(a)
+
+    return deduped
 
 
 def _extract_function_args_from_model_response(raw_model_resp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
