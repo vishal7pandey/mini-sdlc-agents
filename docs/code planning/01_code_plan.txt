@@ -1,0 +1,318 @@
+# 1) High-level goal (one line)
+Implement a Python module `finalize_requirements` that accepts `raw_requirement_text` and returns a validated `requirements` object or a `needs_clarification` result — using OpenAI function-calling via LangChain, validated with Pydantic/JSON Schema, orchestrated by LangGraph/DeepAgents and logged to LangSmith.
+---
+# 2) Repo/file layout for this feature
+
+Add under `src/agents/finalize_requirements/`:
+
+```
+src/agents/finalize_requirements/
+├── __init__.py
+├── prompt.txt                     # canonical prompt template
+├── schema.json                    # JSON Schema for requirements object
+├── models.py                      # Pydantic models (mirrors schema.json) - *types only*
+├── client.py                      # LangChain/OpenAI wrapper + function-calling config
+├── validator.py                   # schema validation + repair orchestration
+├── contradiction.py               # rule-based contradictions + LLM re-check helpers
+├── orchestrator.py                # small orchestration function run_finalize(...)
+├── langgraph_block.yaml           # LangGraph block spec (inputs/outputs/events)
+├── tests/
+│   ├── test_happy_path.md         # test specs (not code) then unit tests
+│   └── fixtures/                  # example inputs & expected outputs JSON
+└── README.md                      # explanation, how to run locally, LangSmith tracing notes
+```
+
+---
+
+# 3) Core interfaces & function signatures (pseudo-signature / docstrings — implement directly)
+
+### Public orchestrator API
+
+`run_finalize(raw_requirement_text: str, context: Optional[Dict]=None) -> FinalizeResult`
+
+* **Inputs**
+
+  * `raw_requirement_text` (str) — UTF-8 raw user text.
+  * `context` (optional dict) — `{existing_systems?: list[str], user_persona?: str, trace_id?: str}`.
+* **Outputs** (`FinalizeResult`)
+
+  * `status` (enum: `"ok" | "partially_ok" | "needs_clarification" | "needs_human_review"`)
+  * `requirements` (Requirements | null)
+  * `errors` (list[str]) — if any controlled errors
+  * `meta` (dict) — `trace_id`, `prompt_version`, `model`, `token_usage`, `repair_attempted` (bool), `schema_version`
+
+### Lower-level LLM invocation
+
+`call_finalizer_function(raw_text: str, context: dict, trace_id: str) -> RawFunctionResponse`
+
+* Sends function-calling request via LangChain wrapper.
+* Returns raw function payload (dict) + raw_text response + model metadata.
+
+### Validation
+
+`validate_and_normalize(raw_payload: dict) -> Tuple[Requirements|None, List[str]]`
+
+* Validates against `schema.json`. Returns normalized model or list of validation errors.
+
+### Repair attempt
+
+`attempt_repair(raw_payload: dict, validation_errors: List[str]) -> RawFunctionResponse`
+
+* Short prompt to the model referencing `validation_errors` and asking to return corrected function response.
+* Allowed exactly one attempt.
+
+### Contradiction detection
+
+`detect_contradictions(requirements: Requirements) -> Optional[Contradiction]`
+
+* Runs deterministic rules then optional semantic LLM re-check for flagged pairs.
+* Returns contradiction object or `None`.
+
+---
+
+# 4) Data model (types) — exact fields & types (to implement as Pydantic models)
+
+**Requirements**
+
+* `id: str` — deterministic id (e.g., `sha256(normalized_text + trace_id)[:10]`)
+* `title: str` — 3–8 words
+* `summary: str` — 1–3 sentences
+* `stakeholders: List[str]`
+* `assumptions: List[str]`
+* `non_goals: List[str]`
+* `acceptance_criteria: List[AcceptanceCriteria]`
+* `functional_requirements: List[FunctionalRequirement]`
+* `non_functional_requirements: List[NonFunctionalRequirement]`
+* `dependencies: List[str]`
+* `constraints: List[str]`
+* `clarifications: List[Clarification]`
+* `contradiction: Optional[Contradiction]`
+* `confidence: float` — 0.0..1.0
+* `meta: Meta` — prompt_version, model, timestamp, trace_id, schema_version
+
+**AcceptanceCriteria**
+
+* `id: str` (AC-1...)
+* `description: str`
+* `priority: Literal["low","medium","high"]`
+* `type: Literal["functional","non-functional","regression"]`
+
+**FunctionalRequirement**
+
+* `id: str` (FR-...)
+* `description: str`
+* `rationale: Optional[str]`
+* `priority: Literal["low","medium","high"]`
+
+**NonFunctionalRequirement**
+
+* `id: str`
+* `description: str`
+* `metric: Optional[str]` (canonical e.g., "p95_latency_ms")
+* `target: Optional[Union[int,float,str]]` (number or "N/A")
+
+**Clarification**
+
+* `id: str` (CL-1)
+* `question: str`
+* `context: Optional[str]`
+* `severity: Literal["blocking","important","nice_to_have"]`
+
+**Contradiction**
+
+* `flag: bool`
+* `issues: List[{field: str, explanation: str}]`
+
+**Meta**
+
+* `prompt_version: str`
+* `model: str`
+* `timestamp: ISO8601 string`
+* `trace_id: str`
+* `schema_version: str`
+* `repair_attempted: bool`
+* `token_usage: Optional[int]`
+
+---
+
+# 5) Function-calling contract (OpenAI) — exact function shape to register
+
+Define a single function `finalize_requirements` with the above `Requirements` JSON schema as the `parameters` object for OpenAI function-calling. LangChain will call it and the model must return a single object matching that schema.
+
+* Ensure `required` fields in schema: `id`, `title`, `summary`, `acceptance_criteria`, `functional_requirements`, `confidence`, `meta`.
+* `additionalProperties: false`
+
+Store this schema as `src/agents/finalize_requirements/schema.json`.
+
+---
+
+# 6) Prompting & prompt template (store in prompt.txt)
+
+* System message: short rules: "Produce JSON conforming exactly to the schema; be concise; if uncertain, add clarifications or assumptions."
+* User message: inject `raw_requirement_text` and `context`.
+* Provide explicit generation rules: "Use `AC-`/`FR-`/`NFR-`/`CL-` ids, normalize priorities to low/medium/high, metrics numeric if possible."
+
+Keep the prompt in `prompt.txt` and reference `prompt_version` in meta.
+
+---
+
+# 7) Validation & repair flow (control flow)
+
+1. **Start**: orchestrator receives `raw_requirement_text` and `context` + `trace_id`.
+2. **LLM call**: `call_finalizer_function(...)`.
+
+   * Save raw response & token usage to LangSmith (trace).
+3. **Parse** raw function payload into dict.
+4. **Validate** via `validate_and_normalize`:
+
+   * Run JSON Schema (or pydantic) validation.
+   * Normalize priorities and metric units.
+   * Return normalized `Requirements` or `validation_errors`.
+5. **If valid**: go to contradiction detection step.
+6. **If invalid**:
+
+   * If `repair_attempted == False`, call `attempt_repair` with `validation_errors`.
+
+     * If repaired payload valid: `repair_attempted=True` and proceed.
+     * Else: mark `needs_human_review`, set `status=needs_human_review` and return with `errors`.
+7. **Contradiction detection**:
+
+   * Run `detect_contradictions(requirements)` (rules).
+   * If deterministic contradiction found, set `requirements.contradiction` and `status=needs_clarification`.
+   * Else for borderline issues, call semantic LLM re-check (single shot).
+   * If semantic re-check confirms contradiction -> `needs_clarification`.
+8. **Ambiguity auto-resolution**:
+
+   * If fields missing but resolvable with high confidence (>0.6), add to `assumptions` and set `status=partially_ok` or `ok`.
+   * If missing and blocking -> generate `clarifications` with severity `blocking` and return `status=needs_clarification`.
+9. **Finalize**:
+
+   * Compute final `confidence` (aggregate heuristics: model-provided score if any + validation pass + number of assumptions).
+   * Persist final object, raw model output, validation steps, and token usage to LangSmith.
+   * Return result.
+
+---
+
+# 8) Contradiction rules (deterministic list to implement)
+
+Implement `CONTRADICTION_RULES` as pairs or regexes:
+
+* ("stateless", "session") -> conflict
+* ("no-db", "requires-persistence") -> conflict
+* ("single-user", "multi-tenant") -> conflict
+* ("no-external-network", "requires-external-api") -> conflict
+* presence of `non_goals` item that matches any `dependencies` entry -> conflict
+
+Implementation detail: canonicalize text to lowercase, remove punctuation, match tokens or synonyms list (maintain small synonyms map).
+
+---
+
+# 9) LangChain & OpenAI integration hints
+
+* Use LangChain LLM wrapper with `function` support (or direct OpenAI calls if necessary).
+* Map OpenAI function result to Pydantic via LangChain OutputParser if available.
+* Ensure you capture model metadata (model name, token usage) for LangSmith logs.
+
+---
+
+# 10) LangGraph block & DeepAgents orchestration spec (YAML-style summary)
+
+**LangGraph Block**: `finalize_requirements`
+
+* Inputs: `raw_requirement_text: str`, `context: dict`, `trace_id: str`
+* Outputs: `requirements: object | null`, `status: string`, `errors: list[string]`
+* Events: `needs_clarification`, `needs_human_review`, `ok`
+* Behavior: call `run_finalize` node; on `needs_human_review` emit event that triggers human-in-loop workflow.
+
+**DeepAgents**:
+
+* Provide retry/backoff policy:
+
+  * If `needs_human_review`: route to human review action (Slack/email/issue).
+  * If validation error: perform single repair attempt with short timeout.
+* Attach LangSmith trace id to context on all calls.
+
+---
+
+# 11) LangSmith telemetry design (what to log)
+
+For each run log:
+
+* `trace_id` (uuid)
+* `raw_input_hash` (sha256)
+* `prompt_version`, `schema_version`
+* `model` and `model_response` (function payload)
+* `token_usage` and cost estimate
+* `validation_result` & `validation_errors`
+* `repair_attempted` boolean and `repair_response` if present
+* `contradiction_detected` boolean & details
+* `final_status` and `requirements` (store final JSON; redact PII or store hashed)
+* `runtime_ms`, `commit_sha` of prompt/schema version
+
+LangSmith should store both the raw model output and the normalized object (for easier replay).
+
+---
+
+# 12) Tests to write (unit + integration)
+
+**Unit tests**
+
+* `test_schema_valid_examples` — load example happy-path payloads from fixtures and assert `validate_and_normalize` returns no errors.
+* `test_schema_invalid_then_repair` — simulate invalid payload & mock model repair to valid -> assert repaired accepted.
+* `test_detect_contradictions_rules` — craft requirements that trigger deterministic rules -> assert contradiction flagged.
+* `test_priority_normalization` — input "High", "urgent", "low priority" -> normalized to "high","high","low".
+
+**Integration tests**
+
+* `test_run_finalize_happy_path` — end-to-end with OpenAI mocked (stub function call to return correct function payload) -> assert `status == ok` and `requirements` present.
+* `test_run_finalize_needs_clarification` — model returns missing blocking field; orchestrator returns `needs_clarification`.
+
+**Fixtures**
+
+* At least 5 fixtures matching the earlier spec (happy, conflicting, ambiguous NFR, minimal, long spec).
+
+---
+
+# 13) Dev tasks (ordered checklist you can follow now)
+
+1. Add `schema.json` and `prompt.txt` to `src/agents/finalize_requirements/` (text-only).
+2. Implement `models.py` with Pydantic classes matching schema.
+3. Implement `client.py` to call OpenAI via LangChain and return raw function payload + meta.
+4. Implement `validator.py` to run JSON Schema/Pydantic validation + normalization.
+5. Implement `contradiction.py` with rule set + semantic LLM re-check helper.
+6. Implement `orchestrator.py` `run_finalize` wiring all steps (LLM call -> validate -> contradiction -> finalize).
+7. Add basic unit tests and fixtures.
+8. Wire LangSmith logging in `client.py` and `orchestrator.py`.
+9. Create `langgraph_block.yaml` and integrate block into testing LangGraph flow locally (dry-run).
+10. Add CI job to run unit tests and linting.
+
+---
+
+# 14) Acceptance criteria for the feature (what "done" looks like)
+
+* `run_finalize` returns `status == ok` and a valid `requirements` object for the happy-path fixture.
+* All unit tests pass locally.
+* LangSmith trace exists for a run (trace includes raw response, validation result).
+* The schema validator accepts the final object with `additionalProperties: false`.
+* For a conflicting fixture, `status == needs_clarification` and `contradiction` filled with actionable messages.
+* Repair flow used exactly once in the invalid payload test and succeeds (if mocked).
+
+---
+
+# 15) Risks & mitigations (developer quick list)
+
+* **Invalid JSON from LLM** → function-calling mitigates this; still implement repair attempt.
+* **Hallucinated dependencies** → set low confidence, add to clarifications.
+* **Token limits** → add pre-summarizer step for large inputs (defer to next iteration).
+* **Schema drift** → version schema/prompt and include `meta.schema_version`.
+
+---
+
+# 16) Small sample prompts (to copy into prompt.txt)
+
+* System: “You are a Requirements Finalizer. Output must strictly match the provided JSON schema. When uncertain, add a `clarifications` entry. Normalize priorities to low/medium/high and prefer numeric NFR targets. Use ids AC-, FR-, NFR-, CL-.”
+* User: `Input: {{raw_requirement_text}} Context: {{context}} TraceId: {{trace_id}} Return function finalize_requirements(...)`
+
+(Keep the prompt in `prompt.txt`. Exact templating handled by LangChain.)
+
+---

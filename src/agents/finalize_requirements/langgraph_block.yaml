@@ -1,0 +1,34 @@
+# LangGraph block spec for the finalize_requirements agent.
+#
+# Task 1: interface sketch only. Later tasks can refine this and
+# integrate with an actual LangGraph flow.
+
+name: finalize_requirements
+kind: block
+
+inputs:
+  raw_requirement_text:
+    type: string
+  context:
+    type: object
+    required: false
+  trace_id:
+    type: string
+    required: false
+
+outputs:
+  requirements:
+    type: object
+    description: Canonical requirements object or null.
+  status:
+    type: string
+    description: ok | partially_ok | needs_clarification | needs_human_review
+  errors:
+    type: array
+    items:
+      type: string
+
+events:
+  - needs_clarification
+  - needs_human_review
+  - ok

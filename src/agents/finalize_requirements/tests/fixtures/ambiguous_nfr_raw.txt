@@ -1,0 +1,3 @@
+Create a notes app that should feel extremely fast and support lots of users
+at the same time. It should basically never go down and should handle huge
+traffic spikes without any performance issues.
