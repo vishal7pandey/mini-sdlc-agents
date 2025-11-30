@@ -120,7 +120,9 @@ def test_llm_integration_malformed_payload(mock_call: Any) -> None:
 
 
 @patch("src.agents.finalize_requirements.orchestrator.call_finalize_requirements")
-def test_llm_integration_contradictory_payload(mock_call: Any) -> None:
+def test_llm_integration_contradictory_payload(
+    mock_call: Any, monkeypatch: Any
+) -> None:
     """Contradictory payload should surface as needs_clarification."""
 
     # This payload matches the conflicting fixture: stateless vs session and
@@ -150,6 +152,11 @@ def test_llm_integration_contradictory_payload(mock_call: Any) -> None:
         "model": "gpt-5-nano",
         "usage": {"total_tokens": 64},
     }
+
+    # Disable the semantic contradiction LLM re-check so this test relies on
+    # deterministic contradiction rules only. This makes the behavior stable
+    # in CI environments without OpenAI keys.
+    monkeypatch.setenv("FINALIZE_SEMANTIC_CONTRADICTION_ENABLED", "false")
 
     result = run_finalize("Conflicting requirements", use_llm=True)
 
