@@ -36,3 +36,7 @@ htmlcov/
 
 # Containers / infra
 *.log
+
+# Local UI build artifacts and staging
+staging/
+favicon_io/
