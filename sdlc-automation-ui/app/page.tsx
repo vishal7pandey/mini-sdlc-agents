@@ -5,7 +5,7 @@ export default function DashboardPage() {
   return (
     <PageLayout
       title="Multi-Agent SDLC Dashboard"
-      subtitle="Automated requirements finalization, design generation, and code synthesis"
+      subtitle="Multi-agent SDLC automation platform"
     >
       <section className="mb-xl">
         <div className="grid gap-lg grid-cols-1 md:grid-cols-2 xl:grid-cols-4">

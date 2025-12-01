@@ -37,7 +37,7 @@ export function Navbar() {
                 Cascade AI
               </span>
               <span className="text-xs text-text-secondary">
-                SDLC Automation
+                Multi-agent SDLC automation platform
               </span>
             </div>
           </Link>

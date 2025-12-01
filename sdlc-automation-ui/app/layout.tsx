@@ -17,8 +17,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Multi-Agent SDLC Automation",
-  description: "Automated requirements finalization and agent orchestration",
+  title: "Cascade AI",
+  description: "Multi-agent SDLC automation platform",
   icons: {
     icon: "/icon.png",
   },
